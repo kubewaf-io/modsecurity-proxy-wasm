@@ -47,5 +47,6 @@ LABEL org.opencontainers.image.title="modsec-wasm" \
 
 COPY --from=builder /modsec.wasm /usr/share/modsec-wasm/modsec.wasm
 COPY --from=builder /modsec.wat /usr/share/modsec-wasm/modsec.wat
+COPY --from=builder /modsec.wasm /plugin.wasm
 COPY test/fixtures/waf-config.default.json /usr/share/modsec-wasm/waf-config.default.json
 COPY test/fixtures/envoy.yaml /usr/share/modsec-wasm/examples/envoy.yaml
