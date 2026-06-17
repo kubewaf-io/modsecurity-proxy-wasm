@@ -6,6 +6,25 @@ on:
   pull_request:
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y git
+      - name: Build wasm image and extract modsec.wasm
+        run: |
+          make image IMAGE=modsec-wasm:ci
+          make extract-wasm IMAGE=modsec-wasm:ci
+      - name: Upload modsec.wasm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: modsec-wasm
+          path: dist/
+          retention-days: 1
+          if-no-files-found: error
+
   unit:
     runs-on: ubuntu-latest
     steps:
@@ -23,32 +42,36 @@ jobs:
         run: make verify-getentropy-stub
 
   integration:
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Download modsec.wasm
+        uses: actions/download-artifact@v4
+        with:
+          name: modsec-wasm
+          path: .
       - name: Install tools
         run: |
           sudo apt-get update
           sudo apt-get install -y git g++ curl wabt
-      - name: Build wasm image
-        run: make image IMAGE=modsec-wasm:ci
-      - name: Extract modsec.wasm
-        run: make extract-wasm IMAGE=modsec-wasm:ci
       - name: Bats integration tests
         run: make test-bats ENVOY_IMAGE=envoyproxy/envoy:v1.38-latest
 
   ftw-subset:
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Download modsec.wasm
+        uses: actions/download-artifact@v4
+        with:
+          name: modsec-wasm
+          path: .
       - name: Install tools
         run: |
           sudo apt-get update
           sudo apt-get install -y git g++ curl wabt
-      - name: Build wasm image
-        run: make image IMAGE=modsec-wasm:ci
-      - name: Extract modsec.wasm
-        run: make extract-wasm IMAGE=modsec-wasm:ci
       - name: CRS go-ftw subset (XSS rules)
         run: make test-regression FTW_INCLUDE='^941.*' ENVOY_IMAGE=envoyproxy/envoy:v1.38-latest
 
@@ -62,18 +85,20 @@ jobs:
         run: make deps-test test-fuzz
 
   perf:
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Download modsec.wasm
+        uses: actions/download-artifact@v4
+        with:
+          name: modsec-wasm
+          path: .
       - name: Install tools
         run: |
           sudo apt-get update
           sudo apt-get install -y git curl unzip python3 python3-matplotlib
-      - name: Build wasm image
-        run: make image IMAGE=modsec-wasm:ci
-      - name: Extract modsec.wasm
-        run: make extract-wasm IMAGE=modsec-wasm:ci
       - name: k6 performance smoke (baseline + modsec/coraza pairs)
         run: make test-perf-k6-ci ENVOY_IMAGE=envoyproxy/envoy:v1.38-latest
       - name: Render perf PNG charts

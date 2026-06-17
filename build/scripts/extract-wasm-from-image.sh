@@ -16,7 +16,19 @@ else
 fi
 
 WASM_PATH="/usr/share/modsec-wasm/modsec.wasm"
-cid=$($CTR create "$IMAGE")
+
+# Release images are FROM scratch with no CMD/ENTRYPOINT. Docker refuses plain
+# `create` (podman may allow it); use the wasm path as a dummy entrypoint — we
+# only copy files and never start the container.
+cid=""
+if cid=$($CTR create "$IMAGE" 2>/dev/null); then
+  :
+elif cid=$($CTR create --entrypoint="$WASM_PATH" "$IMAGE" 2>/dev/null); then
+  :
+else
+  echo "ERROR: failed to create container from $IMAGE (scratch image needs --entrypoint)" >&2
+  exit 1
+fi
 trap '$CTR rm -f "$cid" >/dev/null 2>&1 || true' EXIT
 
 $CTR cp "$cid:$WASM_PATH" "$OUT_DIR/modsec.wasm"
