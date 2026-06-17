@@ -1,0 +1,31 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "customManagers:makefileVersions"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Git commit SHA pins in Makefile (*_SHA and SDK commit)",
+      "managerFilePatterns": [
+        "/^Makefile$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=github-tags depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+?))? digest\\s+\\n[A-Z0-9_]+_SHA \\?= (?<currentDigest>[a-f0-9]{40})",
+        "# renovate: datasource=github-tags depName=proxy-wasm/proxy-wasm-cpp-sdk\\s+\\nPROXY_WASM_CPP_SDK_VERSION \\?= (?<currentDigest>[a-f0-9]{40})"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
+    },
+    {
+      "customType": "regex",
+      "description": "proxy-wasm-cpp-sdk pin in shell.nix (keep in sync with Makefile)",
+      "managerFilePatterns": [
+        "/^shell\\.nix$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=github-tags depName=proxy-wasm/proxy-wasm-cpp-sdk\\s+\\n\\s+rev = \"(?<currentDigest>[a-f0-9]{40})\";"
+      ]
+    }
+  ]
+}
