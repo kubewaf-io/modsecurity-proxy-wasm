@@ -6,13 +6,15 @@ IMAGE="${1:-modsec-wasm:latest}"
 OUT_DIR="${2:-dist}"
 mkdir -p "$OUT_DIR"
 
-if command -v podman >/dev/null 2>&1; then
-  CTR=podman
-elif command -v docker >/dev/null 2>&1; then
-  CTR=docker
-else
-  echo "ERROR: need podman or docker" >&2
-  exit 1
+if [[ -z "${CTR:-}" ]]; then
+  if command -v podman >/dev/null 2>&1; then
+    CTR=podman
+  elif command -v docker >/dev/null 2>&1; then
+    CTR=docker
+  else
+    echo "ERROR: need podman or docker" >&2
+    exit 1
+  fi
 fi
 
 WASM_PATH="/usr/share/modsec-wasm/modsec.wasm"

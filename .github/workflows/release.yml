@@ -30,6 +30,9 @@ jobs:
         env:
           IMAGE: ghcr.io/${{ github.repository }}
           TAG: ${{ github.ref_name }}
+          # Makefile prefers podman when both are installed; GH Actions runners
+          # have both, so pin docker for build/push/extract consistency.
+          CTR: docker
         run: |
           VERSION="${TAG#v}"
           make image IMAGE="${IMAGE}:${TAG}" VERSION="${VERSION}"
@@ -41,6 +44,7 @@ jobs:
       - name: Extract modsec.wasm
         env:
           IMAGE: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          CTR: docker
         run: |
           make extract-wasm IMAGE="${IMAGE}"
           sha256sum dist/modsec.wasm | awk '{print $1}' > dist/modsec.wasm.sha256

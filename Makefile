@@ -94,7 +94,7 @@ image-oci:
 	$(CTR) build -f $(DOCKERFILE_OCI) -t $(IMAGE) .
 
 extract-wasm:
-	./build/scripts/extract-wasm-from-image.sh $(IMAGE) dist
+	CTR="$(CTR)" ./build/scripts/extract-wasm-from-image.sh $(IMAGE) dist
 
 verify-getentropy-stub:
 	./test/integration/verify-getentropy-stub.sh
