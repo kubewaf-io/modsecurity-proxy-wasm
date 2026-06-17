@@ -74,8 +74,8 @@ help:
 	@echo "  make test-perf-k6          k6 load test (PERF_PROFILE / PERF_SCENARIO)"
 	@echo "  make test-perf-k6-compare  modsec vs coraza pair for PERF_PROFILE"
 	@echo "  make test-perf-k6-ci       Smoke: baseline + modsec/coraza pairs"
-	@echo "  make test-perf-charts      PNG charts from latest perf results"
-	@echo "  make test-perf-release     Perf smoke + release PNG bundle"
+	@echo "  make test-perf-charts      Overlay chart from latest perf results"
+	@echo "  make test-perf-release     Perf smoke + release overlay chart"
 	@echo "  make verify-getentropy-stub  Policy check for wasm getentropy stub"
 
 # --- OCI / Podman / Docker ---

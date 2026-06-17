@@ -101,9 +101,12 @@ jobs:
           sudo apt-get install -y git curl unzip python3 python3-matplotlib
       - name: k6 performance smoke (baseline + modsec/coraza pairs)
         run: make test-perf-k6-ci ENVOY_IMAGE=envoyproxy/envoy:v1.38-latest
-      - name: Render perf PNG charts
+      - name: Render perf overlay chart
         if: always()
         run: make test-perf-charts
+      - name: Verify perf overlay chart
+        if: always()
+        run: test -f test/perf/release-charts/perf-overlay.png
       - name: Upload perf results
         if: always()
         uses: actions/upload-artifact@v4
@@ -112,10 +115,8 @@ jobs:
           path: |
             test/perf/results/**/k6-report.html
             test/perf/results/**/k6-compare.html
-            test/perf/results/**/k6-report.png
-            test/perf/results/**/k6-compare.png
             test/perf/results/**/k6-summary.json
             test/perf/results/**/k6-stdout.txt
-            test/perf/release-charts/*.png
+            test/perf/release-charts/perf-overlay.png
           retention-days: 14
           if-no-files-found: ignore

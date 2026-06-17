@@ -102,5 +102,6 @@ test-perf-charts: deps-perf-charts
 	@chmod +x $(TEST_DIR)/perf/render-charts.py
 	@$(CHARTS_PYTHON) $(TEST_DIR)/perf/render-charts.py bundle $(TEST_DIR)/perf/results \
 		-o $(TEST_DIR)/perf/release-charts
+	@test -f $(TEST_DIR)/perf/release-charts/perf-overlay.png
 
 test-perf-release: test-perf-k6-ci test-perf-charts

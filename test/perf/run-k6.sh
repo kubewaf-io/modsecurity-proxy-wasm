@@ -283,7 +283,8 @@ run_one() {
     fi
   fi
 
-  if command -v python3 >/dev/null 2>&1 \
+  if [[ "$PERF_CI" != "1" ]] \
+      && command -v python3 >/dev/null 2>&1 \
       && python3 -c "import matplotlib" 2>/dev/null \
       && [[ -f "$run_dir/k6-summary.json" ]]; then
     python3 "$SCRIPT_DIR/render-charts.py" single "$run_dir/k6-summary.json" \
@@ -333,7 +334,9 @@ compare_pair() {
     --left-label "$left" \
     --right-label "$right"
   echo "    HTML:  $right_dir/k6-compare.html"
-  if command -v python3 >/dev/null 2>&1 && python3 -c "import matplotlib" 2>/dev/null; then
+  if [[ "$PERF_CI" != "1" ]] \
+      && command -v python3 >/dev/null 2>&1 \
+      && python3 -c "import matplotlib" 2>/dev/null; then
     python3 "$SCRIPT_DIR/render-charts.py" compare \
       "$left_dir/k6-summary.json" "$right_dir/k6-summary.json" \
       -o "$right_dir/k6-compare.png" \
