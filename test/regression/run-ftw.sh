@@ -47,14 +47,16 @@ fi
 
 
 
-if command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
-  COMPOSE=(podman compose)
-elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+# Prefer docker when both are installed: GH Actions runners ship podman but its
+# socket is often unavailable; docker compose is the reliable default there.
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   COMPOSE=(docker compose)
-elif command -v podman-compose >/dev/null 2>&1; then
-  COMPOSE=(podman-compose)
+elif command -v podman >/dev/null 2>&1 && podman compose version >/dev/null 2>&1; then
+  COMPOSE=(podman compose)
 elif command -v docker-compose >/dev/null 2>&1; then
   COMPOSE=(docker-compose)
+elif command -v podman-compose >/dev/null 2>&1; then
+  COMPOSE=(podman-compose)
 else
   echo "ERROR: need docker compose or podman compose" >&2
   exit 1

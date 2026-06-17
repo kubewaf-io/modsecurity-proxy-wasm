@@ -26,15 +26,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push OCI image
+      - name: Build and push OCI image (build/docker/Dockerfile)
         env:
           IMAGE: ghcr.io/${{ github.repository }}
           TAG: ${{ github.ref_name }}
+          DOCKERFILE: build/docker/Dockerfile
           # Makefile prefers podman when both are installed; GH Actions runners
           # have both, so pin docker for build/push/extract consistency.
           CTR: docker
         run: |
           VERSION="${TAG#v}"
+          echo "Building ${IMAGE}:${TAG} from ${DOCKERFILE} (release stage)"
           make image IMAGE="${IMAGE}:${TAG}" VERSION="${VERSION}"
           docker push "${IMAGE}:${TAG}"
           docker tag "${IMAGE}:${TAG}" "${IMAGE}:${VERSION}"

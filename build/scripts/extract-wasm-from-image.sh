@@ -7,10 +7,10 @@ OUT_DIR="${2:-dist}"
 mkdir -p "$OUT_DIR"
 
 if [[ -z "${CTR:-}" ]]; then
-  if command -v podman >/dev/null 2>&1; then
-    CTR=podman
-  elif command -v docker >/dev/null 2>&1; then
+  if command -v docker >/dev/null 2>&1; then
     CTR=docker
+  elif command -v podman >/dev/null 2>&1; then
+    CTR=podman
   else
     echo "ERROR: need podman or docker" >&2
     exit 1

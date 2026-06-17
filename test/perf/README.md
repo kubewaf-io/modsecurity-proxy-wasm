@@ -128,9 +128,10 @@ make test-perf-release         # smoke perf + chart bundle
 
 **Release publish:** pushing a `v*` tag runs [`.github/workflows/release.yml`](../../.github/workflows/release.yml), which:
 
-1. Builds and attaches `modsec.wasm` + SHA256
-2. Runs k6 perf smoke and renders PNG charts
-3. Publishes charts to the GitHub Release (embedded in release notes)
+1. Builds and pushes the OCI image from [`build/docker/Dockerfile`](../../build/docker/Dockerfile) to `ghcr.io/<repo>:<tag>`
+2. Extracts and attaches `modsec.wasm` + SHA256
+3. Runs k6 perf smoke and renders PNG charts
+4. Publishes charts to the GitHub Release (embedded in release notes; see [`build/scripts/write-release-notes.sh`](../../build/scripts/write-release-notes.sh))
 
 ## Fetch coraza wasm manually
 

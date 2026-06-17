@@ -14,6 +14,9 @@ jobs:
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y git
       - name: Build wasm image and extract modsec.wasm
+        env:
+          # Makefile prefers podman when both are installed; pin docker on GH Actions.
+          CTR: docker
         run: |
           make image IMAGE=modsec-wasm:ci
           make extract-wasm IMAGE=modsec-wasm:ci
@@ -55,6 +58,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y git g++ curl wabt
+      - name: Pre-pull Envoy image
+        run: docker pull envoyproxy/envoy:v1.38-latest
       - name: Bats integration tests
         run: make test-bats ENVOY_IMAGE=envoyproxy/envoy:v1.38-latest
 

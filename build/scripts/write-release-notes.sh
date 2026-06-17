@@ -27,6 +27,18 @@ emit_section() {
   echo ""
   echo "Artifacts: \`modsec.wasm\` (Envoy proxy-wasm / V8) and SHA256 checksum."
   echo ""
+  echo "## OCI image"
+  echo ""
+  echo "Container image: \`ghcr.io/${REPO}:${TAG}\` (also \`:${TAG#v}\` without the \`v\` prefix)."
+  echo ""
+  echo "Built from [\`build/docker/Dockerfile\`](https://github.com/${REPO}/blob/${TAG}/build/docker/Dockerfile) (default \`release\` stage: wasm + default WAF JSON + Envoy example)."
+  echo "Repackage an existing wasm only: [\`build/docker/Dockerfile.oci\`](https://github.com/${REPO}/blob/${TAG}/build/docker/Dockerfile.oci)."
+  echo ""
+  echo '```bash'
+  echo "make image IMAGE=ghcr.io/${REPO}:${TAG} VERSION=${TAG#v}"
+  echo "make extract-wasm IMAGE=ghcr.io/${REPO}:${TAG}"
+  echo '```'
+  echo ""
   echo "## Performance benchmarks"
   echo ""
   echo "k6 smoke through Envoy (\`envoyproxy/envoy:v1.38-latest\`): baseline, minimal Wasm, full CRS."
