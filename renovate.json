@@ -12,8 +12,8 @@
         "/^Makefile$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=github-tags depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+?))? digest\\s+\\n[A-Z0-9_]+_SHA \\?= (?<currentDigest>[a-f0-9]{40})",
-        "# renovate: datasource=github-tags depName=proxy-wasm/proxy-wasm-cpp-sdk\\s+\\nPROXY_WASM_CPP_SDK_VERSION \\?= (?<currentDigest>[a-f0-9]{40})"
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+?))? digest\\s*\\n[A-Z0-9_]+_SHA \\?= (?<currentValue>[a-f0-9]{40})",
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)\\s*\\nPROXY_WASM_CPP_SDK_VERSION \\?= (?<currentValue>[a-f0-9]{40})"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
     },
@@ -21,10 +21,10 @@
       "customType": "regex",
       "description": "proxy-wasm-cpp-sdk pin in shell.nix (keep in sync with Makefile)",
       "managerFilePatterns": [
-        "/^shell\\.nix$/"
+        "/build/shell\\.nix$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=github-tags depName=proxy-wasm/proxy-wasm-cpp-sdk\\s+\\n\\s+rev = \"(?<currentDigest>[a-f0-9]{40})\";"
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+)\\s*\\n\\s+rev = \"(?<currentValue>[a-f0-9]{40})\";"
       ]
     }
   ]
