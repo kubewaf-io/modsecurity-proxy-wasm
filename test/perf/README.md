@@ -131,7 +131,7 @@ make test-perf-release         # smoke perf + chart bundle
 1. Builds and pushes the OCI image from [`build/docker/Dockerfile`](../../build/docker/Dockerfile) to `ghcr.io/<repo>:<tag>`
 2. Extracts and attaches `modsecurity-proxy-wasm.wasm` + SHA256
 3. Runs k6 perf smoke and renders PNG charts
-4. Publishes charts to the GitHub Release (embedded in release notes; see [`build/scripts/write-release-notes.sh`](../../build/scripts/write-release-notes.sh))
+4. Builds a **conventional-commit** changelog since the previous tag ([`mikepenz/release-changelog-builder-action`](https://github.com/mikepenz/release-changelog-builder-action)) and merges it into release notes via [`build/scripts/write-release-notes.sh`](../../build/scripts/write-release-notes.sh)
 
 ## Fetch coraza wasm manually
 

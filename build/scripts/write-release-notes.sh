@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Build release-notes.md with embedded perf chart links for GitHub Releases.
+# Build release-notes.md for GitHub Releases: conventional-commit changelog + perf charts.
+# Usage: write-release-notes.sh [out.md] [charts_dir] [conventional-changelog.md]
 set -euo pipefail
 
 OUT="${1:-release-notes.md}"
 CHARTS_DIR="${2:-test/perf/release-charts}"
+CHANGELOG_FILE="${3:-}"
 REPO="${GITHUB_REPOSITORY:-owner/repo}"
 TAG="${GITHUB_REF_NAME:-v0.0.0}"
 BASE="https://github.com/${REPO}/releases/download/${TAG}"
@@ -39,6 +41,17 @@ emit_section() {
   echo "make extract-wasm IMAGE=ghcr.io/${REPO}:${TAG}"
   echo '```'
   echo ""
+  if [[ -n "${CHANGELOG_FILE}" && -f "${CHANGELOG_FILE}" && -s "${CHANGELOG_FILE}" ]]; then
+    echo "## What's changed since last release"
+    echo ""
+    cat "${CHANGELOG_FILE}"
+    echo ""
+  elif [[ -n "${CONVENTIONAL_CHANGELOG:-}" ]]; then
+    echo "## What's changed since last release"
+    echo ""
+    printf '%s\n' "${CONVENTIONAL_CHANGELOG}"
+    echo ""
+  fi
   echo "## Performance benchmarks"
   echo ""
   echo "k6 smoke through Envoy (\`envoyproxy/envoy:v1.38-latest\`): baseline, minimal Wasm, full CRS."

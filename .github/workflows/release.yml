@@ -66,6 +66,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download modsecurity-proxy-wasm.wasm
         uses: actions/download-artifact@v4
@@ -84,19 +86,51 @@ jobs:
       - name: Verify perf overlay chart
         run: test -f test/perf/release-charts/perf-overlay.png
 
+      - name: Conventional commit changelog since last release
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v6
+        with:
+          mode: COMMIT
+          toTag: ${{ github.ref_name }}
+          outputFile: conventional-changelog.md
+          configurationJson: |
+            {
+              "template": "#{{CHANGELOG}}",
+              "categories": [
+                { "title": "## 🚀 Features", "labels": ["feat", "feature"] },
+                { "title": "## 🐛 Bug Fixes", "labels": ["fix", "bug"] },
+                { "title": "## 📚 Documentation", "labels": ["docs"] },
+                { "title": "## ⚡ Performance", "labels": ["perf"] },
+                { "title": "## 🔧 Refactoring", "labels": ["refactor"] },
+                { "title": "## ✅ Tests", "labels": ["test"] },
+                { "title": "## 🏗 Build", "labels": ["build"] },
+                { "title": "## 🔁 CI", "labels": ["ci"] },
+                { "title": "## 📦 Other", "labels": ["chore", "revert", "style"] }
+              ],
+              "label_extractor": [
+                {
+                  "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\\([\\w\\-\\.]+\\))?(!)?: ([\\w ])+([\\s\\S]*)",
+                  "on_property": "title",
+                  "target": "$1"
+                }
+              ]
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Write release notes with perf chart embeds
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
           chmod +x build/scripts/write-release-notes.sh
-          ./build/scripts/write-release-notes.sh release-notes.md test/perf/release-charts
+          ./build/scripts/write-release-notes.sh release-notes.md test/perf/release-charts conventional-changelog.md
+          echo "Changelog range: ${{ steps.changelog.outputs.fromTag }} -> ${{ steps.changelog.outputs.toTag }} (${{ steps.changelog.outputs.commits }} commits)"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           body_path: release-notes.md
-          generate_release_notes: true
           files: |
             dist/modsecurity-proxy-wasm.wasm
             dist/modsecurity-proxy-wasm.wasm.sha256
