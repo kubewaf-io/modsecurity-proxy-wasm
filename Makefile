@@ -15,7 +15,7 @@ WASM_OUT := dist/modsecurity-proxy-wasm.wasm
 # renovate: datasource=github-tags depName=emscripten-core/emsdk versioning=semver-coerced
 EMSDK_VERSION ?= 3.1.74
 
-# renovate: datasource=github-tags depName=proxy-wasm/proxy-wasm-cpp-sdk
+# renovate: datasource=github-tags depName=proxy-wasm/proxy-wasm-cpp-sdk versioning=git
 PROXY_WASM_CPP_SDK_VERSION ?= 727de65b37507611b76123316c6832581f42d4f0
 
 # renovate: datasource=github-tags depName=owasp-modsecurity/ModSecurity versioning=semver

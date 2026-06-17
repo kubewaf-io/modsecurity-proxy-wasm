@@ -31,7 +31,7 @@ pkgs.mkShell {
   PROXY_WASM_CPP_SDK = pkgs.fetchFromGitHub {
     owner = "proxy-wasm";
     repo = "proxy-wasm-cpp-sdk";
-    # renovate: datasource=github-tags depName=proxy-wasm/proxy-wasm-cpp-sdk
+    # renovate: datasource=github-tags depName=proxy-wasm/proxy-wasm-cpp-sdk versioning=git
     rev = "727de65b37507611b76123316c6832581f42d4f0";
     sha256 = "sha256-qAJ/krWyhAy6C53k8WXhlwQS4LDqmzra5ecmGzumzvg=";
   };

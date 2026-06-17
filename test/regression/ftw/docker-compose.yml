@@ -1,8 +1,10 @@
 services:
   albedo:
+    # renovate: datasource=docker depName=ghcr.io/coreruleset/albedo
     image: ghcr.io/coreruleset/albedo:0.2.0
 
   chown:
+    # renovate: datasource=docker depName=alpine
     image: alpine:3.20
     command:
       - /bin/sh

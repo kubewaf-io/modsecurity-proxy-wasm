@@ -22,4 +22,24 @@ grep -E '^modsecurity_proxy_wasm' "${OUT_DIR}/envoy-prometheus-${LABEL}.txt" \
 grep -E '^waf_filter' "${OUT_DIR}/envoy-prometheus-${LABEL}.txt" \
   > "${OUT_DIR}/coraza-wasm-metrics-${LABEL}.txt" || true
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if command -v python3 >/dev/null 2>&1; then
+  PYTHONPATH="$SCRIPT_DIR" python3 - "$LABEL" "$OUT_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from memory import parse_prometheus_memory
+
+label, out_dir = sys.argv[1], Path(sys.argv[2])
+prom = out_dir / f"envoy-prometheus-{label}.txt"
+envoy = parse_prometheus_memory(prom)
+if envoy:
+    (out_dir / f"memory-envoy-{label}.json").write_text(
+        json.dumps(envoy, indent=2) + "\n",
+        encoding="utf-8",
+    )
+PY
+fi
+
 echo "==> Saved Envoy stats (${LABEL}) to ${OUT_DIR}"
