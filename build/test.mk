@@ -2,7 +2,7 @@
 
 ROOT_DIR        := $(abspath .)
 TEST_DIR        := $(ROOT_DIR)/test
-WASM_OUT        := $(ROOT_DIR)/dist/modsec.wasm
+WASM_OUT        := $(ROOT_DIR)/dist/modsecurity-proxy-wasm.wasm
 TEST_TOOLS_DIR  := $(TEST_DIR)/.tools
 BATS_BIN        := $(shell command -v bats 2>/dev/null)
 ifeq ($(BATS_BIN),)

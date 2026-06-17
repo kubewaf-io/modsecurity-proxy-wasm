@@ -1,4 +1,4 @@
-# Shared helpers for modsec-wasm Envoy integration tests (bats).
+# Shared helpers for modsecurity-proxy-wasm Envoy integration tests (bats).
 set -euo pipefail
 
 if [[ -z "${SCRIPT_DIR:-}" ]]; then
@@ -12,10 +12,10 @@ if [[ -z "${ROOT_DIR:-}" ]]; then
   ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 fi
 
-WASM="${WASM:-$ROOT_DIR/dist/modsec.wasm}"
+WASM="${WASM:-$ROOT_DIR/dist/modsecurity-proxy-wasm.wasm}"
 ENVOY_YAML="${ENVOY_YAML:-$ROOT_DIR/test/fixtures/envoy.yaml}"
 ENVOY_IMAGE="${ENVOY_IMAGE:-envoyproxy/envoy:v1.38-latest}"
-CONTAINER_NAME="${CONTAINER_NAME:-modsec-wasm-test-envoy}"
+CONTAINER_NAME="${CONTAINER_NAME:-modsecurity-proxy-wasm-test-envoy}"
 HOST_PORT="${HOST_PORT:-18080}"
 ADMIN_PORT="${ADMIN_PORT:-19901}"
 REQUIRED_RUNTIME="${REQUIRED_RUNTIME:-envoy.wasm.runtime.v8}"
@@ -81,7 +81,7 @@ envoy_start() {
   $CTR rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   echo "==> Starting Envoy ($ENVOY_IMAGE)"
   $CTR run -d --rm --name "$CONTAINER_NAME" \
-    -v "$WASM:/etc/modsec.wasm:ro" \
+    -v "$WASM:/etc/modsecurity-proxy-wasm.wasm:ro" \
     -v "$ENVOY_YAML:/etc/envoy.yaml:ro" \
     -p "${HOST_PORT}:8080" \
     -p "${ADMIN_PORT}:9901" \
@@ -133,7 +133,7 @@ envoy_assert_v8_runtime() {
 envoy_http_status() {
   curl -s -o /dev/null -w "%{http_code}" \
     --resolve "www.example.com:${HOST_PORT}:127.0.0.1" \
-    -H "User-Agent: Mozilla/5.0 (modsec-wasm-test)" \
+    -H "User-Agent: Mozilla/5.0 (modsecurity-proxy-wasm-test)" \
     -H "Accept: text/html" \
     "$@"
 }

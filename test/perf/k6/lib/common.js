@@ -12,7 +12,7 @@ export const PERF_FAIL_RATE = Number(__ENV.PERF_FAIL_RATE || 0.01);
 export const defaultHeaders = {
   Host: HOST_HEADER,
   Accept: 'text/html',
-  'User-Agent': 'k6-modsec-perf',
+  'User-Agent': 'k6-modsecurity-proxy-wasm-perf',
 };
 
 export function defaultOptions(scenarioName, extraThresholds = {}) {

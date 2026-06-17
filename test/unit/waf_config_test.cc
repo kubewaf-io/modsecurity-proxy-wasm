@@ -89,7 +89,7 @@ TEST(WafConfig, PlainTextDoesNotAllowFallback) {
 TEST(WafConfig, ParseMetricLabels) {
   const std::string cfg = R"({
     "metric_labels": {
-      "owner": "modsec-wasm",
+      "owner": "modsecurity-proxy-wasm",
       "identifier": "test"
     },
     "directives_map": {"default": ["SecRuleEngine On"]},
@@ -99,7 +99,7 @@ TEST(WafConfig, ParseMetricLabels) {
   ASSERT_TRUE(parseWafMetricOptions(cfg, opts));
   ASSERT_EQ(opts.labels.size(), 2u);
   EXPECT_EQ(opts.labels[0].first, "owner");
-  EXPECT_EQ(opts.labels[0].second, "modsec-wasm");
+  EXPECT_EQ(opts.labels[0].second, "modsecurity-proxy-wasm");
   EXPECT_EQ(opts.labels[1].first, "identifier");
   EXPECT_EQ(opts.labels[1].second, "test");
 }

@@ -1,11 +1,11 @@
 # Performance tests (k6)
 
-Load-test modsec-wasm-plugin through Envoy with [Grafana k6](https://k6.io/), with **[coraza-proxy-wasm](https://github.com/corazawaf/coraza-proxy-wasm)** as a reference WAF on the same Envoy stack.
+Load-test modsecurity-proxy-wasm through Envoy with [Grafana k6](https://k6.io/), with **[coraza-proxy-wasm](https://github.com/corazawaf/coraza-proxy-wasm)** as a reference WAF on the same Envoy stack.
 
 ## Prerequisites
 
 - `docker` or `podman` (+ compose)
-- `dist/modsec.wasm` (`make image` then `make extract-wasm`, or `make modsec.wasm`)
+- `dist/modsecurity-proxy-wasm.wasm` (`make image` then `make extract-wasm`, or `make modsecurity-proxy-wasm.wasm`)
 - `curl`, `unzip`, `sha256sum` (to fetch coraza wasm on first compare run)
 - Ports `18080` (HTTP) and `19901` (admin) free
 
@@ -14,10 +14,10 @@ Coraza wasm is downloaded automatically to `test/perf/.coraza/main.wasm` (pinned
 ## Quick start
 
 ```bash
-# modsec full CRS only
+# modsecurity-proxy-wasm full CRS only
 make test-perf-k6
 
-# Side-by-side: modsec-full vs coraza-full (same scenario)
+# Side-by-side: modsecurity-proxy-wasm-full vs coraza-full (same scenario)
 make test-perf-k6-compare
 
 # coraza only
@@ -32,19 +32,19 @@ PERF_PROFILE=baseline make test-perf-k6
 | Profile | WAF | Config | Pairs with |
 |---------|-----|--------|------------|
 | `baseline` | none | Envoy router only | — |
-| `wasm-minimal` | modsec-wasm | `SecRuleEngine Off` | `coraza-minimal` |
-| `modsec-full` | modsec-wasm | Full CRS, debug off | `coraza-full` |
+| `wasm-minimal` | modsecurity-proxy-wasm | `SecRuleEngine Off` | `coraza-minimal` |
+| `modsecurity-proxy-wasm-full` | modsecurity-proxy-wasm | Full CRS, debug off | `coraza-full` |
 | `coraza-minimal` | coraza-proxy-wasm | `SecRuleEngine Off` | `wasm-minimal` |
-| `coraza-full` | coraza-proxy-wasm | Embedded CRS v4.14, debug off | `modsec-full` |
+| `coraza-full` | coraza-proxy-wasm | Embedded CRS v4.14, debug off | `modsecurity-proxy-wasm-full` |
 
 Configs: `test/perf/profiles/`.
 
-**Note:** CRS versions differ (modsec pins v4.27 at build time; coraza 0.6.0 embeds v4.14). Treat comparisons as directional, not byte-identical.
+**Note:** CRS versions differ (modsecurity-proxy-wasm pins v4.27 at build time; coraza 0.6.0 embeds v4.14). Treat comparisons as directional, not byte-identical.
 
-## Compare modsec vs coraza
+## Compare modsecurity-proxy-wasm vs coraza
 
 ```bash
-# Default pair: modsec-full vs coraza-full, benign GET
+# Default pair: modsecurity-proxy-wasm-full vs coraza-full, benign GET
 make test-perf-k6-compare
 
 # Minimal Wasm ABI tax comparison
@@ -73,8 +73,8 @@ Smoke sequence:
 
 1. `baseline` / `benign-get`
 2. `wasm-minimal` vs `coraza-minimal` / `benign-get`
-3. `modsec-full` vs `coraza-full` / `benign-get`
-4. `modsec-full` vs `coraza-full` / `benign-post-1k`
+3. `modsecurity-proxy-wasm-full` vs `coraza-full` / `benign-get`
+4. `modsecurity-proxy-wasm-full` vs `coraza-full` / `benign-post-1k`
 
 ## Scenarios
 
@@ -89,7 +89,7 @@ Smoke sequence:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PERF_PROFILE` | `modsec-full` | Envoy profile |
+| `PERF_PROFILE` | `modsecurity-proxy-wasm-full` | Envoy profile |
 | `PERF_SCENARIO` | `benign-get` | k6 script name |
 | `PERF_VUS` | `32` | Virtual users |
 | `PERF_DURATION` | `60s` | Measured run |
@@ -108,14 +108,14 @@ Each run: `test/perf/results/run-<timestamp>-<profile>-<scenario>/`
 - `k6-summary.json`, `k6-stdout.txt`, **`k6-report.html`** (small self-contained HTML)
 - `k6-compare.html` (after `--compare` / CI smoke pairs)
 - `envoy-stats-*.txt`, `envoy-prometheus-*.txt`
-- `modsec-wasm-metrics-*.txt` (modsec profiles)
+- `modsecurity-proxy-wasm-metrics-*.txt` (modsecurity-proxy-wasm profiles)
 - `coraza-wasm-metrics-*.txt` (coraza profiles — `waf_filter_tx_*`)
 
 Open a report locally:
 
 ```bash
 xdg-open test/perf/results/run-*/k6-report.html
-xdg-open test/perf/release-charts/perf-modsec-full-benign-get.png
+xdg-open test/perf/release-charts/perf-modsecurity-proxy-wasm-full-benign-get.png
 ```
 
 ## PNG charts (release)
@@ -129,7 +129,7 @@ make test-perf-release         # smoke perf + chart bundle
 **Release publish:** pushing a `v*` tag runs [`.github/workflows/release.yml`](../../.github/workflows/release.yml), which:
 
 1. Builds and pushes the OCI image from [`build/docker/Dockerfile`](../../build/docker/Dockerfile) to `ghcr.io/<repo>:<tag>`
-2. Extracts and attaches `modsec.wasm` + SHA256
+2. Extracts and attaches `modsecurity-proxy-wasm.wasm` + SHA256
 3. Runs k6 perf smoke and renders PNG charts
 4. Publishes charts to the GitHub Release (embedded in release notes; see [`build/scripts/write-release-notes.sh`](../../build/scripts/write-release-notes.sh))
 

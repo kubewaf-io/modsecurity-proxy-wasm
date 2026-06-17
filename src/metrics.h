@@ -1,5 +1,5 @@
-#ifndef MODSEC_WASM_METRICS_H_
-#define MODSEC_WASM_METRICS_H_
+#ifndef MODSECURITY_PROXY_WASM_METRICS_H_
+#define MODSECURITY_PROXY_WASM_METRICS_H_
 
 #include <cstdint>
 #include <list>
@@ -43,12 +43,12 @@ class ModSecMetrics {
   static constexpr size_t kMaxDistinctTagMetrics = 128;
 };
 
-namespace modsec_metric_phase {
+namespace modsecurity_proxy_wasm_metric_phase {
 constexpr const char* kRequestHeaders = "http_request_headers";
 constexpr const char* kRequestBody = "http_request_body";
 constexpr const char* kResponseHeaders = "http_response_headers";
 constexpr const char* kResponseBody = "http_response_body";
 constexpr const char* kLogging = "http_logging";
-}  // namespace modsec_metric_phase
+}  // namespace modsecurity_proxy_wasm_metric_phase
 
 #endif

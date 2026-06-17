@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Point proxy-wasm-cpp-sdk at modsec-wasm getentropy (wasi/api.h + clock_time_get)."""
+"""Point proxy-wasm-cpp-sdk at modsecurity-proxy-wasm getentropy (wasi/api.h + clock_time_get)."""
 from __future__ import annotations
 
 import sys

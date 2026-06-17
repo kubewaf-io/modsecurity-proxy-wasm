@@ -1,4 +1,4 @@
-# coraza-proxy-wasm — full embedded CRS (pairs with modsec-full).
+# coraza-proxy-wasm — full embedded CRS (pairs with modsecurity-proxy-wasm-full).
 stats_config:
   stats_tags:
     - tag_name: phase

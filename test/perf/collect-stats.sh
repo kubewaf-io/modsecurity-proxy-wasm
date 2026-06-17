@@ -13,11 +13,11 @@ mkdir -p "$OUT_DIR"
 curl -sf "${ADMIN_URL}/stats" > "${OUT_DIR}/envoy-stats-${LABEL}.txt"
 curl -sf "${ADMIN_URL}/stats/prometheus" > "${OUT_DIR}/envoy-prometheus-${LABEL}.txt"
 
-grep -E '^(http\.ingress_http\.|wasm\.|modsec_wasm|waf_filter)' "${OUT_DIR}/envoy-stats-${LABEL}.txt" \
+grep -E '^(http\.ingress_http\.|wasm\.|modsecurity_proxy_wasm|waf_filter)' "${OUT_DIR}/envoy-stats-${LABEL}.txt" \
   > "${OUT_DIR}/envoy-stats-${LABEL}-filtered.txt" || true
 
-grep -E '^modsec_wasm' "${OUT_DIR}/envoy-prometheus-${LABEL}.txt" \
-  > "${OUT_DIR}/modsec-wasm-metrics-${LABEL}.txt" || true
+grep -E '^modsecurity_proxy_wasm' "${OUT_DIR}/envoy-prometheus-${LABEL}.txt" \
+  > "${OUT_DIR}/modsecurity-proxy-wasm-metrics-${LABEL}.txt" || true
 
 grep -E '^waf_filter' "${OUT_DIR}/envoy-prometheus-${LABEL}.txt" \
   > "${OUT_DIR}/coraza-wasm-metrics-${LABEL}.txt" || true

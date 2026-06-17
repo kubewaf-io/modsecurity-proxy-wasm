@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# CRS go-ftw regression runner for modsec-wasm-plugin (Envoy + albedo + go-ftw).
+# CRS go-ftw regression runner for modsecurity-proxy-wasm (Envoy + albedo + go-ftw).
 #
 # Usage:
 #   ./test/regression/run-ftw.sh
 #   FTW_INCLUDE='^941.*' ./test/regression/run-ftw.sh          # subset of tests
 #   KEEP_RUNNING=1 ./test/regression/run-ftw.sh                # leave stack up after run
 #
-# Requires dist/modsec.wasm built with embedded @ftw-conf (build/rules/ftw-config.conf).
-# Rebuild after changing FTW overlays: make modsec.wasm  (or make image)
+# Requires dist/modsecurity-proxy-wasm.wasm built with embedded @ftw-conf (build/rules/ftw-config.conf).
+# Rebuild after changing FTW overlays: make modsecurity-proxy-wasm.wasm  (or make image)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 FTW_DIR="$SCRIPT_DIR/ftw"
 CRS_CACHE="$FTW_DIR/.crs-cache"
-WASM="$ROOT_DIR/dist/modsec.wasm"
-COMPOSE_PROJECT="${COMPOSE_PROJECT:-modsec-wasm-ftw}"
+WASM="$ROOT_DIR/dist/modsecurity-proxy-wasm.wasm"
+COMPOSE_PROJECT="${COMPOSE_PROJECT:-modsecurity-proxy-wasm-ftw}"
 FTW_HOST_PORT="${FTW_HOST_PORT:-18082}"
 KEEP_RUNNING="${KEEP_RUNNING:-0}"
 
@@ -41,7 +41,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ ! -f "$WASM" ]]; then
-  echo "ERROR: $WASM not found. Build first: make image  (or make modsec.wasm)" >&2
+  echo "ERROR: $WASM not found. Build first: make image  (or make modsecurity-proxy-wasm.wasm)" >&2
   exit 1
 fi
 
@@ -79,7 +79,7 @@ prepare_crs_cache() {
 }
 
 compose() {
-  MODSEC_WASM="$WASM" \
+  MODSECURITY_PROXY_WASM="$WASM" \
   CRS_CACHE="$CRS_CACHE" \
   CRS_VERSION="$CRS_VERSION" \
   GO_FTW_VERSION="$GO_FTW_VERSION" \
@@ -136,10 +136,10 @@ wait_for_waf_logs() {
   ctr="${COMPOSE[0]}"
   vol="$(log_volume)"
   retries=90
-  echo "==> Waiting for modsec rule lines in envoy.log"
+  echo "==> Waiting for modsecurity-proxy-wasm rule lines in envoy.log"
   while [[ "$retries" -gt 0 ]]; do
     if "$ctr" run --rm -v "${vol}:/logs:ro" docker.io/library/alpine:3.20 \
-        grep -qF '[modsec][rule]' /logs/envoy.log 2>/dev/null; then
+        grep -qF '[modsecurity-proxy-wasm][rule]' /logs/envoy.log 2>/dev/null; then
       return 0
     fi
     curl -sf -H "Host: localhost" "http://127.0.0.1:${FTW_HOST_PORT}/status/200" -o /dev/null || true

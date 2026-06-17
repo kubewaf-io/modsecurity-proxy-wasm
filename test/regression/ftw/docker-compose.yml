@@ -28,7 +28,7 @@ services:
       - --log-path
       - /home/envoy/logs/envoy.log
     volumes:
-      - ${MODSEC_WASM:-../../../dist/modsec.wasm}:/etc/modsec.wasm:ro
+      - ${MODSECURITY_PROXY_WASM:-../../../dist/modsecurity-proxy-wasm.wasm}:/etc/modsecurity-proxy-wasm.wasm:ro
       - ./envoy.yaml:/etc/envoy.yaml:ro
       - logs:/home/envoy/logs:rw
     ports:

@@ -9,14 +9,14 @@ KEEP_RUNNING="${KEEP_RUNNING:-0}"
 
 usage() {
   cat <<'EOF'
-Integration test runner for modsec-wasm-plugin (Envoy + envoy.wasm.runtime.v8).
+Integration test runner for modsecurity-proxy-wasm (Envoy + envoy.wasm.runtime.v8).
 
 Usage:
   ./test/integration/run-envoy-test.sh              # run tests, then stop Envoy
   ./test/integration/run-envoy-test.sh --keep-running
   KEEP_RUNNING=1 ./test/integration/run-envoy-test.sh
 
-Requires dist/modsec.wasm. Delegates to bats (make test-bats).
+Requires dist/modsecurity-proxy-wasm.wasm. Delegates to bats (make test-bats).
 EOF
   exit 0
 }

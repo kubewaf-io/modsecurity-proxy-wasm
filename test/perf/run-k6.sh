@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# k6 performance harness for modsec-wasm-plugin.
+# k6 performance harness for modsecurity-proxy-wasm.
 #
 # Usage:
 #   ./test/perf/run-k6.sh
-#   PERF_PROFILE=modsec-full PERF_SCENARIO=benign-get ./test/perf/run-k6.sh
+#   PERF_PROFILE=modsecurity-proxy-wasm-full PERF_SCENARIO=benign-get ./test/perf/run-k6.sh
 #   ./test/perf/run-k6.sh --compare
 #   ./test/perf/run-k6.sh --ci
 #   ./test/perf/run-k6.sh --keep-running
 #
 # Profiles:
-#   baseline | wasm-minimal | modsec-full | coraza-minimal | coraza-full
+#   baseline | wasm-minimal | modsecurity-proxy-wasm-full | coraza-minimal | coraza-full
 # Scenarios:
 #   benign-get | benign-post-1k | block-xss | mixed
 
@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.k6.yml"
 
-PERF_PROFILE="${PERF_PROFILE:-modsec-full}"
+PERF_PROFILE="${PERF_PROFILE:-modsecurity-proxy-wasm-full}"
 PERF_SCENARIO="${PERF_SCENARIO:-benign-get}"
 PERF_VUS="${PERF_VUS:-32}"
 PERF_DURATION="${PERF_DURATION:-60s}"
@@ -28,26 +28,26 @@ PERF_P99_MS="${PERF_P99_MS:-200}"
 PERF_FAIL_RATE="${PERF_FAIL_RATE:-0.01}"
 PERF_HOST_PORT="${PERF_HOST_PORT:-18080}"
 PERF_ADMIN_PORT="${PERF_ADMIN_PORT:-19901}"
-PERF_ENVOY_CONTAINER="${PERF_ENVOY_CONTAINER:-modsec-wasm-perf-envoy}"
+PERF_ENVOY_CONTAINER="${PERF_ENVOY_CONTAINER:-modsecurity-proxy-wasm-perf-envoy}"
 ENVOY_IMAGE="${ENVOY_IMAGE:-envoyproxy/envoy:v1.38-latest}"
 K6_IMAGE="${K6_IMAGE:-grafana/k6:0.57.0}"
 KEEP_RUNNING="${KEEP_RUNNING:-0}"
 PERF_CI="${PERF_CI:-0}"
 RUN_COMPARE="${RUN_COMPARE:-0}"
 
-WASM="$ROOT_DIR/dist/modsec.wasm"
+WASM="$ROOT_DIR/dist/modsecurity-proxy-wasm.wasm"
 CORAZA_WASM="$SCRIPT_DIR/.coraza/main.wasm"
 RESULTS_DIR="$SCRIPT_DIR/results"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
-VALID_PROFILES=(baseline wasm-minimal modsec-full coraza-minimal coraza-full)
+VALID_PROFILES=(baseline wasm-minimal modsecurity-proxy-wasm-full coraza-minimal coraza-full)
 VALID_SCENARIOS=(benign-get benign-post-1k block-xss mixed)
 
 usage() {
   sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
   echo ""
   echo "Environment:"
-  echo "  PERF_PROFILE   ${VALID_PROFILES[*]} (default: modsec-full)"
+  echo "  PERF_PROFILE   ${VALID_PROFILES[*]} (default: modsecurity-proxy-wasm-full)"
   echo "  PERF_SCENARIO  ${VALID_SCENARIOS[*]} (default: benign-get)"
   echo "  PERF_VUS       default: 32"
   echo "  PERF_DURATION  default: 60s"
@@ -55,7 +55,7 @@ usage() {
   echo "  PERF_P99_MS    default: 200"
   echo ""
   echo "Flags:"
-  echo "  --compare      Run modsec profile then matching coraza profile"
+  echo "  --compare      Run modsecurity-proxy-wasm profile then matching coraza profile"
   exit 0
 }
 
@@ -128,9 +128,9 @@ is_coraza_profile() {
 coraza_pair_for() {
   case "$1" in
     wasm-minimal) echo "coraza-minimal" ;;
-    modsec-full) echo "coraza-full" ;;
+    modsecurity-proxy-wasm-full) echo "coraza-full" ;;
     coraza-minimal) echo "wasm-minimal" ;;
-    coraza-full) echo "modsec-full" ;;
+    coraza-full) echo "modsecurity-proxy-wasm-full" ;;
     *) echo "" ;;
   esac
 }
@@ -145,22 +145,22 @@ require_coraza_wasm() {
 
 wasm_mounts_for_profile() {
   local profile="$1"
-  local modsec_mount coraza_mount
+  local msp_wasm_mount coraza_mount
   case "$profile" in
     baseline)
-      modsec_mount="$NOOP_WASM"
+      msp_wasm_mount="$NOOP_WASM"
       coraza_mount="$NOOP_WASM"
       ;;
     coraza-*)
-      modsec_mount="$NOOP_WASM"
+      msp_wasm_mount="$NOOP_WASM"
       coraza_mount="$CORAZA_WASM"
       ;;
     *)
-      modsec_mount="$WASM"
+      msp_wasm_mount="$WASM"
       coraza_mount="$NOOP_WASM"
       ;;
   esac
-  printf '%s %s\n' "$modsec_mount" "$coraza_mount"
+  printf '%s %s\n' "$msp_wasm_mount" "$coraza_mount"
 }
 
 cleanup_envoy() {
@@ -206,12 +206,12 @@ run_one() {
   if is_coraza_profile "$profile"; then
     require_coraza_wasm
   elif [[ "$profile" != "baseline" && ! -f "$WASM" ]]; then
-    echo "ERROR: $WASM not found. Build first: make image or make modsec.wasm" >&2
+    echo "ERROR: $WASM not found. Build first: make image or make modsecurity-proxy-wasm.wasm" >&2
     exit 1
   fi
-  read -r modsec_mount coraza_mount <<<"$(wasm_mounts_for_profile "$profile")"
+  read -r msp_wasm_mount coraza_mount <<<"$(wasm_mounts_for_profile "$profile")"
 
-  MODSEC_WASM="$modsec_mount" \
+  MODSECURITY_PROXY_WASM="$msp_wasm_mount" \
   CORAZA_WASM="$coraza_mount" \
   PERF_PROFILE="$profile" \
   PERF_HOST_PORT="$PERF_HOST_PORT" \
@@ -272,9 +272,9 @@ run_one() {
   ADMIN_URL="http://127.0.0.1:${PERF_ADMIN_PORT}" \
     "$SCRIPT_DIR/collect-stats.sh" after "$run_dir"
 
-  if [[ "$profile" == "modsec-full" ]]; then
-    if ! grep -q 'modsec_wasm_tx_total' "$run_dir/envoy-prometheus-after.txt" 2>/dev/null; then
-      echo "WARN: modsec_wasm_tx_total not found in post-run stats" >&2
+  if [[ "$profile" == "modsecurity-proxy-wasm-full" ]]; then
+    if ! grep -q 'modsecurity_proxy_wasm_tx_total' "$run_dir/envoy-prometheus-after.txt" 2>/dev/null; then
+      echo "WARN: modsecurity_proxy_wasm_tx_total not found in post-run stats" >&2
     fi
   fi
   if is_coraza_profile "$profile"; then
@@ -349,15 +349,15 @@ compare_pair() {
 if [[ "${RUN_ALL_SMOKE:-0}" == "1" ]]; then
   run_one baseline benign-get
   compare_pair wasm-minimal coraza-minimal benign-get
-  compare_pair modsec-full coraza-full benign-get
-  compare_pair modsec-full coraza-full benign-post-1k
+  compare_pair modsecurity-proxy-wasm-full coraza-full benign-get
+  compare_pair modsecurity-proxy-wasm-full coraza-full benign-post-1k
   exit 0
 fi
 
 if [[ "$RUN_COMPARE" == "1" ]]; then
   pair="$(coraza_pair_for "$PERF_PROFILE")"
   if [[ -z "$pair" ]]; then
-    echo "ERROR: --compare requires PERF_PROFILE in wasm-minimal, modsec-full, coraza-minimal, or coraza-full" >&2
+    echo "ERROR: --compare requires PERF_PROFILE in wasm-minimal, modsecurity-proxy-wasm-full, coraza-minimal, or coraza-full" >&2
     exit 2
   fi
   if [[ "$PERF_PROFILE" == coraza-* ]]; then

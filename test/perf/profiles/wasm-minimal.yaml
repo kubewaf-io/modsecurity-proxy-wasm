@@ -39,13 +39,13 @@ static_resources:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm
               config:
-                name: "modsecurity_waf"
+                name: "modsecurity_proxy_wasm"
                 vm_config:
-                  vm_id: "modsecurity_waf_v8"
+                  vm_id: "modsecurity_proxy_wasm_v8"
                   runtime: "envoy.wasm.runtime.v8"
                   code:
                     local:
-                      filename: "/etc/modsec.wasm"
+                      filename: "/etc/modsecurity-proxy-wasm.wasm"
                 configuration:
                   "@type": "type.googleapis.com/google.protobuf.StringValue"
                   value: |
@@ -58,7 +58,7 @@ static_resources:
                       },
                       "default_directives": "default",
                       "metric_labels": {
-                        "owner": "modsec-wasm",
+                        "owner": "modsecurity-proxy-wasm",
                         "identifier": "perf-minimal"
                       }
                     }

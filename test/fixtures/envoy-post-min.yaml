@@ -16,10 +16,10 @@ static_resources:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm
               config:
-                name: modsecurity_waf
+                name: modsecurity_proxy_wasm
                 vm_config:
                   runtime: envoy.wasm.runtime.v8
-                  code: { local: { filename: /etc/modsec.wasm } }
+                  code: { local: { filename: /etc/modsecurity-proxy-wasm.wasm } }
                 configuration:
                   "@type": type.googleapis.com/google.protobuf.StringValue
                   value: |

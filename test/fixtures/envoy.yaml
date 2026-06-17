@@ -1,5 +1,5 @@
-# Test Envoy config for modsec-wasm-plugin
-# WASM metrics: curl -s http://127.0.0.1:19901/stats/prometheus | grep modsec_wasm
+# Test Envoy config for modsecurity-proxy-wasm
+# WASM metrics: curl -s http://127.0.0.1:19901/stats/prometheus | grep modsecurity_proxy_wasm
 stats_config:
   stats_tags:
     # Non-greedy captures: stat names embed phase/severity/tag before metric_labels.
@@ -15,7 +15,7 @@ stats_config:
       regex: "(_severity=([0-9]+))"
     - tag_name: tag
       regex: "(_tag=([0-9a-zA-Z.-]+?))_phase="
-# Run with: docker run --rm -v $(pwd)/dist/modsec.wasm:/etc/modsec.wasm:ro \
+# Run with: docker run --rm -v $(pwd)/dist/modsecurity-proxy-wasm.wasm:/etc/modsecurity-proxy-wasm.wasm:ro \
 #   -v $(pwd)/test/fixtures/envoy.yaml:/etc/envoy.yaml:ro -p 8080:8080 \
 #   envoyproxy/envoy:v1.38-latest
 #   envoy -c /etc/envoy.yaml --log-level info
@@ -25,7 +25,7 @@ stats_config:
 #
 # Test block:
 #   curl -v "http://localhost:8080/?q=<script>alert(1)</script>"
-# Expect 403 and log "modsec" intervention.
+# Expect 403 and log modsecurity-proxy-wasm intervention.
 
 static_resources:
   listeners:
@@ -56,14 +56,14 @@ static_resources:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm
               config:
-                name: "modsecurity_waf"
+                name: "modsecurity_proxy_wasm"
                 vm_config:
-                  # REQUIRED: modsec.wasm is Emscripten/proxy-wasm (not WASI). Do not use wazero.
-                  vm_id: "modsecurity_waf_v8"
+                  # REQUIRED: modsecurity-proxy-wasm.wasm is Emscripten/proxy-wasm (not WASI). Do not use wazero.
+                  vm_id: "modsecurity_proxy_wasm_v8"
                   runtime: "envoy.wasm.runtime.v8"
                   code:
                     local:
-                      filename: "/etc/modsec.wasm"
+                      filename: "/etc/modsecurity-proxy-wasm.wasm"
                 # JSON WAF config: directives_map resolves virtual includes baked in at build
                 # (@demo-conf, @crs-setup-conf, @owasp_crs/*.conf = full OWASP CRS).
                 configuration:
@@ -82,7 +82,7 @@ static_resources:
                       },
                       "default_directives": "default",
                       "metric_labels": {
-                        "owner": "modsec-wasm",
+                        "owner": "modsecurity-proxy-wasm",
                         "identifier": "test"
                       }
                     }
@@ -113,7 +113,7 @@ static_resources:
                 direct_response:
                   status: 200
                   body:
-                    inline_string: "ok - passed modsec wasm filter\n"
+                    inline_string: "ok - passed modsecurity-proxy-wasm filter\n"
           http_filters:
           - name: envoy.filters.http.router
             typed_config:

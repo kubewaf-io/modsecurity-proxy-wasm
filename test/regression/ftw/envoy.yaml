@@ -1,4 +1,4 @@
-# Envoy config for CRS go-ftw regression (modsec-wasm-plugin).
+# Envoy config for CRS go-ftw regression (modsecurity-proxy-wasm).
 static_resources:
   listeners:
     - address:
@@ -29,13 +29,13 @@ static_resources:
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.wasm.v3.Wasm
                       config:
-                        name: "modsecurity_waf"
+                        name: "modsecurity_proxy_wasm"
                         vm_config:
-                          vm_id: "modsecurity_waf_v8"
+                          vm_id: "modsecurity_proxy_wasm_v8"
                           runtime: "envoy.wasm.runtime.v8"
                           code:
                             local:
-                              filename: "/etc/modsec.wasm"
+                              filename: "/etc/modsecurity-proxy-wasm.wasm"
                         configuration:
                           "@type": "type.googleapis.com/google.protobuf.StringValue"
                           value: |

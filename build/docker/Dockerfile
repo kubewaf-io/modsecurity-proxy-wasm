@@ -2,14 +2,14 @@
 # Builder image: OS toolchain + `make all` (see build/build.mk).
 #
 # OCI artifact image (default):
-#   podman build -f build/docker/Dockerfile -t modsec-wasm:latest .
-#   make extract-wasm IMAGE=modsec-wasm:latest
+#   podman build -f build/docker/Dockerfile -t modsecurity-proxy-wasm:latest .
+#   make extract-wasm IMAGE=modsecurity-proxy-wasm:latest
 #
 # Builder stage only:
-#   podman build -f build/docker/Dockerfile --target builder -t modsec-wasm-builder .
+#   podman build -f build/docker/Dockerfile --target builder -t modsecurity-proxy-wasm-builder .
 #
-# Package an existing modsec.wasm (no compile):
-#   podman build -f build/docker/Dockerfile.oci -t modsec-wasm:latest .
+# Package an existing modsecurity-proxy-wasm.wasm (no compile):
+#   podman build -f build/docker/Dockerfile.oci -t modsecurity-proxy-wasm:latest .
 
 FROM debian:trixie-slim AS builder
 
@@ -28,7 +28,7 @@ COPY . /build/
 ARG CRS_VERSION=v4.27.0
 ENV CRS_VERSION=${CRS_VERSION}
 
-RUN make all PREFIX=/opt MODSEC_WASM_OUT=/modsec.wasm MODSEC_WAT_OUT=/modsec.wat
+RUN make all PREFIX=/opt MODSECURITY_PROXY_WASM_OUT=/modsecurity-proxy-wasm.wasm MODSECURITY_PROXY_WAT_OUT=/modsecurity-proxy-wasm.wat
 
 # OCI distribution image (default target): wasm + default WAF JSON + Envoy example.
 FROM scratch AS release
@@ -36,17 +36,17 @@ FROM scratch AS release
 ARG CRS_VERSION=v4.27.0
 ARG VERSION=0.1.0
 
-LABEL org.opencontainers.image.title="modsec-wasm" \
+LABEL org.opencontainers.image.title="modsecurity-proxy-wasm" \
       org.opencontainers.image.description="ModSecurity proxy-wasm module with embedded OWASP CRS for Envoy envoy.wasm.runtime.v8" \
       org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.vendor="modsec-wasm-plugin" \
+      org.opencontainers.image.vendor="modsecurity-proxy-wasm" \
       org.opencontainers.image.licenses="Apache-2.0" \
-      org.opencontainers.image.source="https://github.com/owasp-modsecurity/ModSecurity" \
-      modsec.wasm.runtime="envoy.wasm.runtime.v8" \
+      org.opencontainers.image.source="https://github.com/owasp-modsecurity/modsecurity-proxy-wasm" \
+      modsecurity.proxy_wasm.runtime="envoy.wasm.runtime.v8" \
       owasp.crs.ref="${CRS_VERSION}"
 
-COPY --from=builder /modsec.wasm /usr/share/modsec-wasm/modsec.wasm
-COPY --from=builder /modsec.wat /usr/share/modsec-wasm/modsec.wat
-COPY --from=builder /modsec.wasm /plugin.wasm
-COPY test/fixtures/waf-config.default.json /usr/share/modsec-wasm/waf-config.default.json
-COPY test/fixtures/envoy.yaml /usr/share/modsec-wasm/examples/envoy.yaml
+COPY --from=builder /modsecurity-proxy-wasm.wasm /usr/share/modsecurity-proxy-wasm/modsecurity-proxy-wasm.wasm
+COPY --from=builder /modsecurity-proxy-wasm.wat /usr/share/modsecurity-proxy-wasm/modsecurity-proxy-wasm.wat
+COPY --from=builder /modsecurity-proxy-wasm.wasm /plugin.wasm
+COPY test/fixtures/waf-config.default.json /usr/share/modsecurity-proxy-wasm/waf-config.default.json
+COPY test/fixtures/envoy.yaml /usr/share/modsecurity-proxy-wasm/examples/envoy.yaml

@@ -84,7 +84,7 @@ export function htmlReport(data, meta = {}) {
 <body>
   <main>
     <h1>${profile} <span style="color:var(--muted)">/</span> ${scenario}</h1>
-    <p class="sub">modsec-wasm k6 perf &nbsp;·&nbsp; ${generated} &nbsp;·&nbsp; ${passBadge(overallOk)}</p>
+    <p class="sub">modsecurity-proxy-wasm k6 perf &nbsp;·&nbsp; ${generated} &nbsp;·&nbsp; ${passBadge(overallOk)}</p>
     <div class="grid">
       <div class="card"><h2>Throughput</h2><div class="metric">${fmtNum(rps, 0)}<small>req/s</small></div></div>
       <div class="card"><h2>Requests</h2><div class="metric">${fmtNum(reqs, 0)}<small>total</small></div></div>
@@ -158,7 +158,7 @@ export function htmlCompareReport(left, right, leftLabel, rightLabel) {
 <body>
   <main>
     <h1>${leftLabel} vs ${rightLabel}</h1>
-    <p class="sub">modsec-wasm k6 comparison · ${generated}</p>
+    <p class="sub">modsecurity-proxy-wasm k6 comparison · ${generated}</p>
     <table>
       <thead><tr><th>Metric</th><th>${leftLabel}</th><th>${rightLabel}</th><th>Delta</th></tr></thead>
       <tbody>

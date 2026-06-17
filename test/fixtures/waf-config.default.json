@@ -11,7 +11,7 @@
   },
   "default_directives": "default",
   "metric_labels": {
-    "owner": "modsec-wasm",
+    "owner": "modsecurity-proxy-wasm",
     "identifier": "default"
   }
 }

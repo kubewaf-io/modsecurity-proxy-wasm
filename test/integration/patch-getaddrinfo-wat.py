@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch modsec.wat: replace env.getaddrinfo import with an in-module stub."""
+"""Patch modsecurity-proxy-wasm.wat: replace env.getaddrinfo import with an in-module stub."""
 import re
 import sys
 
@@ -31,8 +31,8 @@ def patch_line(line: str) -> str:
 
 
 def main() -> int:
-    src = sys.argv[1] if len(sys.argv) > 1 else "/tmp/modsec.wat"
-    dst = sys.argv[2] if len(sys.argv) > 2 else "/tmp/modsec_fixed.wat"
+    src = sys.argv[1] if len(sys.argv) > 1 else "/tmp/modsecurity-proxy-wasm.wat"
+    dst = sys.argv[2] if len(sys.argv) > 2 else "/tmp/modsecurity-proxy-wasm-fixed.wat"
 
     with open(src) as f:
         lines = f.readlines()

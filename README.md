@@ -11,7 +11,7 @@ make test-bats
 
 ```bash
 podman run --rm \
-  -v "$(pwd)/dist/modsec.wasm:/etc/modsec.wasm:ro" \
+  -v "$(pwd)/dist/modsecurity-proxy-wasm.wasm:/etc/modsecurity-proxy-wasm.wasm:ro" \
   -v "$(pwd)/test/fixtures/envoy.yaml:/etc/envoy.yaml:ro" \
   -p 8080:8080 envoyproxy/envoy:v1.38-latest envoy -c /etc/envoy.yaml
 ```
@@ -33,7 +33,7 @@ http_filters:
     config:
       vm_config:
         runtime: envoy.wasm.runtime.v8
-        code: { local: { filename: /etc/modsec.wasm } }
+        code: { local: { filename: /etc/modsecurity-proxy-wasm.wasm } }
 ```
 
 **WAF config** — JSON `directives_map` / `default_directives` profiles:
@@ -70,14 +70,14 @@ http_filters:
 ```
 
 ```bash
-curl -s http://127.0.0.1:9901/stats/prometheus | grep modsec_wasm.tx
+curl -s http://127.0.0.1:9901/stats/prometheus | grep modsecurity_proxy_wasm.tx
 ```
 
 **OCI artifact** — wasm, default WAF JSON, and an Envoy example in one image:
 
 ```bash
 make image
-make extract-wasm    # → dist/modsec.wasm
+make extract-wasm    # → dist/modsecurity-proxy-wasm.wasm
 ```
 
 **Fail-closed** — invalid config aborts plugin startup (no silent CRS fallback unless `allow_fallback: true`).

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Extract modsec.wasm (and optional extras) from the OCI artifact image.
+# Extract modsecurity-proxy-wasm.wasm (and optional extras) from the OCI artifact image.
 set -euo pipefail
 
-IMAGE="${1:-modsec-wasm:latest}"
+IMAGE="${1:-modsecurity-proxy-wasm:latest}"
 OUT_DIR="${2:-dist}"
 mkdir -p "$OUT_DIR"
 
@@ -17,7 +17,7 @@ if [[ -z "${CTR:-}" ]]; then
   fi
 fi
 
-WASM_PATH="/usr/share/modsec-wasm/modsec.wasm"
+WASM_PATH="/usr/share/modsecurity-proxy-wasm/modsecurity-proxy-wasm.wasm"
 
 # Release images are FROM scratch with no CMD/ENTRYPOINT. Docker refuses plain
 # `create` (podman may allow it); use the wasm path as a dummy entrypoint — we
@@ -33,13 +33,13 @@ else
 fi
 trap '$CTR rm -f "$cid" >/dev/null 2>&1 || true' EXIT
 
-$CTR cp "$cid:$WASM_PATH" "$OUT_DIR/modsec.wasm"
-echo "Wrote $OUT_DIR/modsec.wasm"
+$CTR cp "$cid:$WASM_PATH" "$OUT_DIR/modsecurity-proxy-wasm.wasm"
+echo "Wrote $OUT_DIR/modsecurity-proxy-wasm.wasm"
 
-if $CTR cp "$cid:/usr/share/modsec-wasm/waf-config.default.json" "$OUT_DIR/waf-config.default.json" 2>/dev/null; then
+if $CTR cp "$cid:/usr/share/modsecurity-proxy-wasm/waf-config.default.json" "$OUT_DIR/waf-config.default.json" 2>/dev/null; then
   echo "Wrote $OUT_DIR/waf-config.default.json"
 fi
 
-if $CTR cp "$cid:/usr/share/modsec-wasm/examples/envoy.yaml" "$OUT_DIR/envoy.example.yaml" 2>/dev/null; then
+if $CTR cp "$cid:/usr/share/modsecurity-proxy-wasm/examples/envoy.yaml" "$OUT_DIR/envoy.example.yaml" 2>/dev/null; then
   echo "Wrote $OUT_DIR/envoy.example.yaml"
 fi

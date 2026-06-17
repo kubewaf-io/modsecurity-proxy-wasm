@@ -236,7 +236,7 @@ bool loadChunk(RuleChunkLoader loader, void* user, const char* label, const char
   return loader(label, data, size, user, error);
 }
 
-bool loadAsset(RuleChunkLoader loader, void* user, const modsec_wasm_rules::RuleAsset& asset,
+bool loadAsset(RuleChunkLoader loader, void* user, const modsecurity_proxy_wasm_rules::RuleAsset& asset,
                std::set<std::string>& seen, std::string& error) {
   if (seen.count(asset.path)) {
     return true;
@@ -252,7 +252,7 @@ struct LoadCtx {
   std::string* error;
 };
 
-bool loadOwaspCrsGlob(const modsec_wasm_rules::RuleAsset& asset, void* user) {
+bool loadOwaspCrsGlob(const modsecurity_proxy_wasm_rules::RuleAsset& asset, void* user) {
   auto* ctx = static_cast<LoadCtx*>(user);
   if (std::strcmp(asset.path, "@owasp_crs/_all.conf") == 0) {
     return true;
@@ -263,7 +263,7 @@ bool loadOwaspCrsGlob(const modsec_wasm_rules::RuleAsset& asset, void* user) {
 bool resolveIncludeLoad(const std::string& target, RuleChunkLoader loader, void* user,
                         std::set<std::string>& seen, std::string& error) {
   if (target == "@demo-conf" || target == "@crs-setup-conf" || target == "@ftw-conf") {
-    const auto* asset = modsec_wasm_rules::lookup(target.c_str());
+    const auto* asset = modsecurity_proxy_wasm_rules::lookup(target.c_str());
     if (asset == nullptr) {
       error = "unknown virtual include: " + target;
       return false;
@@ -273,12 +273,12 @@ bool resolveIncludeLoad(const std::string& target, RuleChunkLoader loader, void*
 
   if (target == "@owasp_crs/*.conf") {
     LoadCtx ctx{loader, user, &seen, &error};
-    modsec_wasm_rules::foreach_owasp_crs(loadOwaspCrsGlob, &ctx);
+    modsecurity_proxy_wasm_rules::foreach_owasp_crs(loadOwaspCrsGlob, &ctx);
     return error.empty();
   }
 
   if (target.rfind("@owasp_crs/", 0) == 0) {
-    const auto* asset = modsec_wasm_rules::lookup(target.c_str());
+    const auto* asset = modsecurity_proxy_wasm_rules::lookup(target.c_str());
     if (asset == nullptr) {
       error = "unknown virtual include: " + target;
       return false;
@@ -335,7 +335,7 @@ bool applyJsonConfig(const std::string& json, RuleChunkLoader loader, void* user
 
 bool resolveIncludeExpand(const std::string& target, std::string& out, std::set<std::string>& seen, std::string& error);
 
-bool appendOwaspCrsGlobExpand(const modsec_wasm_rules::RuleAsset& asset, void* user) {
+bool appendOwaspCrsGlobExpand(const modsecurity_proxy_wasm_rules::RuleAsset& asset, void* user) {
   struct Ctx {
     std::string* out;
     std::set<std::string>* seen;
@@ -356,7 +356,7 @@ bool appendOwaspCrsGlobExpand(const modsec_wasm_rules::RuleAsset& asset, void* u
 
 bool resolveIncludeExpand(const std::string& target, std::string& out, std::set<std::string>& seen, std::string& error) {
   if (target == "@demo-conf" || target == "@crs-setup-conf" || target == "@ftw-conf") {
-    const auto* asset = modsec_wasm_rules::lookup(target.c_str());
+    const auto* asset = modsecurity_proxy_wasm_rules::lookup(target.c_str());
     if (asset == nullptr) {
       error = "unknown virtual include: " + target;
       return false;
@@ -375,12 +375,12 @@ bool resolveIncludeExpand(const std::string& target, std::string& out, std::set<
       std::set<std::string>* seen;
       std::string* error;
     } ctx{&out, &seen, &error};
-    modsec_wasm_rules::foreach_owasp_crs(appendOwaspCrsGlobExpand, &ctx);
+    modsecurity_proxy_wasm_rules::foreach_owasp_crs(appendOwaspCrsGlobExpand, &ctx);
     return true;
   }
 
   if (target.rfind("@owasp_crs/", 0) == 0) {
-    const auto* asset = modsec_wasm_rules::lookup(target.c_str());
+    const auto* asset = modsecurity_proxy_wasm_rules::lookup(target.c_str());
     if (asset == nullptr) {
       error = "unknown virtual include: " + target;
       return false;

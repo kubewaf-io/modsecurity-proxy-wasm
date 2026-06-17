@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Assert modsec.wasm is loaded under envoy.wasm.runtime.v8 (not wazero).
+# Assert modsecurity-proxy-wasm.wasm is loaded under envoy.wasm.runtime.v8 (not wazero).
 set -euo pipefail
 
 ADMIN_PORT="${ADMIN_PORT:-19901}"
 REQUIRED_RUNTIME="${REQUIRED_RUNTIME:-envoy.wasm.runtime.v8}"
-WASM="${WASM:-$(cd "$(dirname "$0")/../.." && pwd)/dist/modsec.wasm}"
+WASM="${WASM:-$(cd "$(dirname "$0")/../.." && pwd)/dist/modsecurity-proxy-wasm.wasm}"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 

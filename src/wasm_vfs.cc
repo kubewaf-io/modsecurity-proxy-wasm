@@ -8,7 +8,7 @@
 
 namespace {
 
-constexpr char kRulesDir[] = "/modsec-rules";
+constexpr char kRulesDir[] = "/modsecurity-proxy-wasm-rules";
 
 std::string ruleRefPathImpl(const char* label) {
   static thread_local std::string ref;
@@ -52,14 +52,14 @@ std::string ruleRefPathImpl(const char* label) {
 
 }  // namespace
 
-bool modsec_wasm_mount_crs_data_files() {
+bool modsecurity_proxy_wasm_mount_crs_data_files() {
   // @pmFromFile lists are expanded into @pm at build time (generate_rules_catalog.py).
   // Envoy's V8 runtime does not provide WASI path_open or Emscripten embed FS loaders.
-  (void)modsec_wasm_rules::lookup;
+  (void)modsecurity_proxy_wasm_rules::lookup;
   return true;
 }
 
-const char* modsec_wasm_rule_ref_path(const char* label) {
+const char* modsecurity_proxy_wasm_rule_ref_path(const char* label) {
   static thread_local std::string storage;
   storage = ruleRefPathImpl(label);
   return storage.c_str();

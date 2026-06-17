@@ -1,4 +1,4 @@
-// modsec-wasm-plugin: ModSecurity WASM module for Envoy using proxy-wasm-cpp-sdk
+// modsecurity-proxy-wasm: ModSecurity WASM module for Envoy using proxy-wasm-cpp-sdk
 // Supports loading rules (including CRS via configuration or defaults).
 // Must be compiled with Emscripten for compatibility with Envoy's v8 WASM runtime.
 
@@ -126,17 +126,17 @@ static RegisterContextFactory register_ModSecContext(CONTEXT_FACTORY(ModSecConte
 static thread_local ModSecContext* g_active_modsec_context = nullptr;
 
 // Log callback for ModSecurity rule matches
-static void modsecLogCb(void* data, const void* ruleMessagev) {
+static void modsecurity_proxy_wasm_log_cb(void* data, const void* ruleMessagev) {
   (void)data;
   if (ruleMessagev == nullptr) {
-    LOG_WARN("[modsec] logCb called with null ruleMessage");
+    LOG_WARN("[modsecurity-proxy-wasm] logCb called with null ruleMessage");
     return;
   }
   const RuleMessage* ruleMessage = reinterpret_cast<const RuleMessage*>(ruleMessagev);
   if (g_active_modsec_context != nullptr) {
     g_active_modsec_context->recordRuleMatch(*ruleMessage);
   }
-  LOG_WARN(std::string("[modsec][rule] ") + RuleMessage::log(*ruleMessage).substr(0, 200));
+  LOG_WARN(std::string("[modsecurity-proxy-wasm][rule] ") + RuleMessage::log(*ruleMessage).substr(0, 200));
 }
 
 // Default minimal rules (engine on + basic). CRS can be appended via plugin config.
@@ -161,7 +161,7 @@ bool loadRuleChunk(const char* label, const char* data, std::size_t size, void* 
   }
   auto* rules = static_cast<RulesSet*>(user);
   std::string chunk(data, size);
-  const char* ref = modsec_wasm_rule_ref_path(label);
+  const char* ref = modsecurity_proxy_wasm_rule_ref_path(label);
   int ret = rules->load(chunk.c_str(), ref);
   if (ret < 0) {
     err = rules->m_parserError.str();
@@ -173,27 +173,27 @@ bool loadRuleChunk(const char* label, const char* data, std::size_t size, void* 
 }  // namespace
 
 bool ModSecRootContext::onConfigure(size_t configuration_size) {
-  LOG_WARN("[modsec] onConfigure size=" + std::to_string(configuration_size));
+  LOG_WARN("[modsecurity-proxy-wasm] onConfigure size=" + std::to_string(configuration_size));
 
   modsec_ = new ModSecurity();
-  modsec_->setConnectorInformation("modsec-wasm/1.0 (Envoy proxy-wasm-cpp-sdk)");
-  modsec_->setServerLogCb(modsecLogCb, modsecurity::RuleMessageLogProperty);
+  modsec_->setConnectorInformation("modsecurity-proxy-wasm/1.0 (Envoy proxy-wasm-cpp-sdk)");
+  modsec_->setServerLogCb(modsecurity_proxy_wasm_log_cb, modsecurity::RuleMessageLogProperty);
 
   rules_ = new RulesSet();
 
-  if (!modsec_wasm_mount_crs_data_files()) {
-    LOG_WARN("[modsec] CRS .data MEMFS mount failed (non-fatal when @pmFromFile was inlined at build time)");
+  if (!modsecurity_proxy_wasm_mount_crs_data_files()) {
+    LOG_WARN("[modsecurity-proxy-wasm] CRS .data MEMFS mount failed (non-fatal when @pmFromFile was inlined at build time)");
   }
 
   std::string config;
   if (!readPluginConfig(configuration_size, config)) {
-    LOG_ERROR("[modsec] Failed to read plugin configuration");
+    LOG_ERROR("[modsecurity-proxy-wasm] Failed to read plugin configuration");
     return false;
   }
 
   WafMetricOptions metric_options;
   if (!parseWafMetricOptions(config, metric_options)) {
-    LOG_ERROR("[modsec] Failed to parse metric_labels in plugin configuration");
+    LOG_ERROR("[modsecurity-proxy-wasm] Failed to parse metric_labels in plugin configuration");
     return false;
   }
   metrics_.configure(metric_options);
@@ -201,21 +201,21 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
   std::string err;
   if (!applyWafConfiguration(config, loadRuleChunk, rules_, err)) {
     if (!wafConfigAllowsFallback(config)) {
-      LOG_ERROR(std::string("[modsec] WAF config load failed (fail-closed): ") + err);
+      LOG_ERROR(std::string("[modsecurity-proxy-wasm] WAF config load failed (fail-closed): ") + err);
       return false;
     }
-    LOG_WARN("[modsec] WAF config load failed, allow_fallback=true — loading minimal built-in rules");
+    LOG_WARN("[modsecurity-proxy-wasm] WAF config load failed, allow_fallback=true — loading minimal built-in rules");
     int ret = rules_->load(kDefaultRules);
     if (ret < 0) {
-      LOG_ERROR(std::string("[modsec] Failed to load fallback rules: ") + rules_->m_parserError.str());
+      LOG_ERROR(std::string("[modsecurity-proxy-wasm] Failed to load fallback rules: ") + rules_->m_parserError.str());
       return false;
     }
-    LOG_WARN("[modsec] Minimal fallback rules loaded");
+    LOG_WARN("[modsecurity-proxy-wasm] Minimal fallback rules loaded");
     metrics_.countConfigureFallbackRules();
     return true;
   }
-  LOG_WARN("[modsec] CRS catalog loaded (directives_map)");
-  LOG_WARN("[modsec] WAF configuration applied (JSON directives_map + embedded OWASP CRS)");
+  LOG_WARN("[modsecurity-proxy-wasm] CRS catalog loaded (directives_map)");
+  LOG_WARN("[modsecurity-proxy-wasm] WAF configuration applied (JSON directives_map + embedded OWASP CRS)");
   return true;
 }
 
@@ -271,7 +271,7 @@ int ModSecContext::processIntervention(const char* phase) {
 
   int status = intervention.status;
   if (intervention.log != nullptr) {
-    LOG_WARN(std::string("[modsec][intervention] ") + intervention.log);
+    LOG_WARN(std::string("[modsecurity-proxy-wasm][intervention] ") + intervention.log);
     free(intervention.log);
   }
   if (intervention.url != nullptr) {
@@ -350,12 +350,12 @@ FilterHeadersStatus ModSecContext::onRequestHeaders(uint32_t, bool end_of_stream
 
   transaction_->processConnection(client_ip.c_str(), static_cast<int>(client_port),
                                   server_ip.c_str(), static_cast<int>(server_port));
-  if (int st = processIntervention(modsec_metric_phase::kRequestHeaders); st != 0) {
+  if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kRequestHeaders); st != 0) {
     return sendBlockResponse(st);
   }
 
   transaction_->processURI(path.c_str(), method.c_str(), "1.1");
-  if (int st = processIntervention(modsec_metric_phase::kRequestHeaders); st != 0) {
+  if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kRequestHeaders); st != 0) {
     return sendBlockResponse(st);
   }
 
@@ -402,12 +402,12 @@ FilterHeadersStatus ModSecContext::onRequestHeaders(uint32_t, bool end_of_stream
       transaction_->addRequestHeader("Host", host);
     }
   }
-  if (int st = processIntervention(modsec_metric_phase::kRequestHeaders); st != 0) {
+  if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kRequestHeaders); st != 0) {
     return sendBlockResponse(st);
   }
 
   transaction_->processRequestHeaders();
-  if (int st = processIntervention(modsec_metric_phase::kRequestHeaders); st != 0) {
+  if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kRequestHeaders); st != 0) {
     return sendBlockResponse(st);
   }
 
@@ -421,7 +421,7 @@ FilterHeadersStatus ModSecContext::onRequestHeaders(uint32_t, bool end_of_stream
     // Run phase-2 without synthesizing a body byte; a fake append triggers CRS 920640 on GET.
     transaction_->processRequestBody();
     request_body_processed_ = true;
-    if (int st = processIntervention(modsec_metric_phase::kRequestBody); st != 0) {
+    if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kRequestBody); st != 0) {
       return sendBlockResponse(st);
     }
     return FilterHeadersStatus::Continue;
@@ -467,7 +467,7 @@ FilterDataStatus ModSecContext::onRequestBody(size_t body_buffer_length, bool en
   transaction_->processRequestBody();
   request_body_processed_ = true;
   request_body_received_ = 0;
-  if (int st = processIntervention(modsec_metric_phase::kRequestBody); st != 0) {
+  if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kRequestBody); st != 0) {
     return sendBlockResponseData(st);
   }
   return FilterDataStatus::Continue;
@@ -483,7 +483,7 @@ FilterHeadersStatus ModSecContext::onResponseHeaders(uint32_t, bool end_of_strea
   if (!request_body_processed_) {
     transaction_->processRequestBody();
     request_body_processed_ = true;
-    if (int st = processIntervention(modsec_metric_phase::kRequestBody); st != 0) {
+    if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kRequestBody); st != 0) {
       return sendBlockResponse(st);
     }
   }
@@ -515,7 +515,7 @@ FilterHeadersStatus ModSecContext::onResponseHeaders(uint32_t, bool end_of_strea
 
   transaction_->processResponseHeaders(status_code, "HTTP/1.1");
 
-  if (int st = processIntervention(modsec_metric_phase::kResponseHeaders); st != 0) {
+  if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kResponseHeaders); st != 0) {
     return sendBlockResponse(st);
   }
 
@@ -525,11 +525,11 @@ FilterHeadersStatus ModSecContext::onResponseHeaders(uint32_t, bool end_of_strea
   if (!needs_body_buffer) {
     static const unsigned char empty_body[1] = {0};
     transaction_->appendResponseBody(empty_body, 1);
-    if (int st = processIntervention(modsec_metric_phase::kResponseBody); st != 0) {
+    if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kResponseBody); st != 0) {
       return sendBlockResponse(st);
     }
     finalizeResponseBodyPhase();
-    if (int st = processIntervention(modsec_metric_phase::kResponseBody); st != 0) {
+    if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kResponseBody); st != 0) {
       return sendBlockResponse(st);
     }
   }
@@ -564,7 +564,7 @@ FilterDataStatus ModSecContext::onResponseBody(size_t body_buffer_length, bool e
     if (body && body->size() > 0) {
       transaction_->appendResponseBody(reinterpret_cast<const unsigned char*>(body->data()), body->size());
       response_body_received_ += body->size();
-      if (int st = processIntervention(modsec_metric_phase::kResponseBody); st != 0) {
+      if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kResponseBody); st != 0) {
         response_body_processed_ = true;
         return sanitizeInterruptedResponseBody(body_buffer_length);
       }
@@ -578,7 +578,7 @@ FilterDataStatus ModSecContext::onResponseBody(size_t body_buffer_length, bool e
   }
 
   finalizeResponseBodyPhase();
-  if (int st = processIntervention(modsec_metric_phase::kResponseBody); st != 0) {
+  if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kResponseBody); st != 0) {
     return sanitizeInterruptedResponseBody(body_buffer_length);
   }
   return FilterDataStatus::Continue;

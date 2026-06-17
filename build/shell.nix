@@ -1,6 +1,6 @@
 { pkgs ? import <nixpkgs> {} }:
 pkgs.mkShell {
-  name = "modsec-wasm-plugin";
+  name = "modsecurity-proxy-wasm";
 
   buildInputs = with pkgs; [
     # ModSecurity + dependencies
@@ -52,6 +52,6 @@ pkgs.mkShell {
     echo "   #include <proxy-wasm/proxy_wasm.h>"
     echo "   #include <modsecurity/modsecurity.h>"
     echo ""
-    echo "Ready to build your modsec-wasm-plugin! 🚀"
+    echo "Ready to build your modsecurity-proxy-wasm! 🚀"
   '';
 }

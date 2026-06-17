@@ -88,7 +88,7 @@ def render(left: dict, right: dict, left_label: str, right_label: str) -> str:
 <body>
   <main>
     <h1>{html.escape(left_label)} vs {html.escape(right_label)}</h1>
-    <p class="sub">modsec-wasm k6 comparison · {html.escape(generated)}</p>
+    <p class="sub">modsecurity-proxy-wasm k6 comparison · {html.escape(generated)}</p>
     <table>
       <thead><tr><th>Metric</th><th>{html.escape(left_label)}</th>
         <th>{html.escape(right_label)}</th><th>Delta</th></tr></thead>

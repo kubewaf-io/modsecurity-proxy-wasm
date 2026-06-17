@@ -1,5 +1,5 @@
-#ifndef MODSEC_WASM_WAF_CONFIG_H_
-#define MODSEC_WASM_WAF_CONFIG_H_
+#ifndef MODSECURITY_PROXY_WASM_WAF_CONFIG_H_
+#define MODSECURITY_PROXY_WASM_WAF_CONFIG_H_
 
 #include <cstddef>
 #include <string>

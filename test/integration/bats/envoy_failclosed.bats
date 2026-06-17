@@ -10,13 +10,13 @@ setup_file() {
 }
 
 @test "invalid WAF config fails closed without fallback" {
-  local bad_name="${BAD_CONTAINER_NAME:-modsec-wasm-test-bad-config}"
+  local bad_name="${BAD_CONTAINER_NAME:-modsecurity-proxy-wasm-test-bad-config}"
   local bad_yaml="$ROOT_DIR/test/fixtures/envoy-bad-config.yaml"
   local wait_timeout="${FAILCLOSED_WAIT_TIMEOUT:-30}"
 
   $CTR rm -f "$bad_name" >/dev/null 2>&1 || true
   $CTR run -d --name "$bad_name" \
-    -v "$WASM:/etc/modsec.wasm:ro" \
+    -v "$WASM:/etc/modsecurity-proxy-wasm.wasm:ro" \
     -v "$bad_yaml:/etc/envoy.yaml:ro" \
     -p "18081:8080" \
     "$ENVOY_IMAGE" \

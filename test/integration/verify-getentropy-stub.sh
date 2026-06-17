@@ -22,11 +22,11 @@ grep -q '__wasi_clock_time_get' "$ENTROPY" || fail "$ENTROPY must call __wasi_cl
 grep -q '__WASI_CLOCKID_REALTIME' "$ENTROPY" || fail "$ENTROPY must use __WASI_CLOCKID_* constants"
 grep -q '__WASI_ERRNO_SUCCESS' "$ENTROPY" || fail "$ENTROPY must check __WASI_ERRNO_SUCCESS"
 
-WASM="${WASM:-$ROOT_DIR/dist/modsec.wasm}"
+WASM="${WASM:-$ROOT_DIR/dist/modsecurity-proxy-wasm.wasm}"
 if [[ -f "$WASM" ]] && command -v wasm-objdump >/dev/null 2>&1; then
   dump=$(wasm-objdump -x "$WASM" 2>&1 || true)
   if grep -q 'getentropy' <<<"$dump"; then
-    echo "==> modsec.wasm exports/imports getentropy — clock_time_get import required"
+    echo "==> modsecurity-proxy-wasm.wasm exports/imports getentropy — clock_time_get import required"
     grep -q 'clock_time_get' <<<"$dump" || fail "getentropy linked but clock_time_get import missing"
   else
     echo "==> getentropy not linked in $WASM (acceptable if DCE'd)"

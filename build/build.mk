@@ -1,4 +1,4 @@
-# Build logic for modsec-wasm (used locally and inside the Docker builder).
+# Build logic for modsecurity-proxy-wasm (used locally and inside the Docker builder).
 # Dependency pins: Makefile (Renovate-managed *_VERSION / *_SHA variables).
 
 SHELL := /bin/bash
@@ -13,11 +13,11 @@ PROXY_WASM_CPP_SDK ?= $(PREFIX)/proxy-wasm-cpp-sdk
 PCRE2_SRC       ?= $(PREFIX)/pcre2-wasm
 PCRE2_EM        ?= $(PREFIX)/pcre2-em
 MODSEC_SRC      ?= $(PREFIX)/modsec
-MODSEC_WASM     ?= $(PREFIX)/modsec-wasm
+MODSECURITY_LIB ?= $(PREFIX)/modsecurity-lib
 CRS_DIR         ?= $(PREFIX)/crs
 
-MODSEC_WASM_OUT ?= $(BUILD_DIR)/dist/modsec.wasm
-MODSEC_WAT_OUT  ?= $(BUILD_DIR)/dist/modsec.wat
+MODSECURITY_PROXY_WASM_OUT ?= $(BUILD_DIR)/dist/modsecurity-proxy-wasm.wasm
+MODSECURITY_PROXY_WAT_OUT  ?= $(BUILD_DIR)/dist/modsecurity-proxy-wasm.wat
 
 STAMPS_DIR      := $(BUILD_DIR)/.cache/stamps
 OBJ_DIR         := $(BUILD_DIR)/.cache/obj
@@ -46,19 +46,19 @@ EMSCRIPTEN_LINK_OPTS := --no-entry \
 	-sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=16MB -sSTACK_SIZE=1MB
 
 PLUGIN_SRCS := \
-	$(BUILD_DIR)/src/modsec_wasm.cc \
+	$(BUILD_DIR)/src/modsecurity_proxy_wasm.cc \
 	$(BUILD_DIR)/src/metrics.cc \
 	$(BUILD_DIR)/src/waf_config.cc \
 	$(BUILD_DIR)/src/wasm_vfs.cc \
 	$(GENERATED_CC)
 
-.PHONY: all build deps clean-build modsec.wasm modsec.wat
+.PHONY: all build deps clean-build modsecurity-proxy-wasm.wasm modsecurity-proxy-wasm.wat
 
-all: modsec.wasm modsec.wat
+all: modsecurity-proxy-wasm.wasm modsecurity-proxy-wasm.wat
 build: all
 
-modsec.wasm: $(MODSEC_WASM_OUT)
-modsec.wat: $(MODSEC_WAT_OUT)
+modsecurity-proxy-wasm.wasm: $(MODSECURITY_PROXY_WASM_OUT)
+modsecurity-proxy-wasm.wat: $(MODSECURITY_PROXY_WAT_OUT)
 
 deps: $(STAMPS_DIR)/emsdk \
 	$(STAMPS_DIR)/proxy-wasm-cpp-sdk \
@@ -128,9 +128,9 @@ $(STAMPS_DIR)/modsecurity: $(STAMPS_DIR)/pcre2
 		emconfigure ./configure $(MODSEC_CONFIGURE_FLAGS)
 	cd $(MODSEC_SRC) && $(EMS_ENV) emmake make -j$(JOBS) -C others
 	cd $(MODSEC_SRC) && $(EMS_ENV) emmake make -j$(JOBS) -C src libmodsecurity.la
-	mkdir -p $(MODSEC_WASM)/lib $(MODSEC_WASM)/include
-	cp $(MODSEC_SRC)/src/.libs/libmodsecurity.a $(MODSEC_WASM)/lib/
-	cp -r $(MODSEC_SRC)/headers/* $(MODSEC_WASM)/include/
+	mkdir -p $(MODSECURITY_LIB)/lib $(MODSECURITY_LIB)/include
+	cp $(MODSEC_SRC)/src/.libs/libmodsecurity.a $(MODSECURITY_LIB)/lib/
+	cp -r $(MODSEC_SRC)/headers/* $(MODSECURITY_LIB)/include/
 	touch $@
 
 $(STAMPS_DIR)/crs:
@@ -159,31 +159,31 @@ $(WASM_STUBS_OBJ): $(BUILD_DIR)/src/wasm_stubs.c | $(STAMPS_DIR)/emsdk
 	@mkdir -p $(OBJ_DIR)
 	$(EMS_ENV) emcc -c $(BUILD_DIR)/src/wasm_stubs.c -o $(WASM_STUBS_OBJ)
 
-$(MODSEC_WASM_OUT): deps $(GENERATED_CC) $(WASM_GETENTROPY_OBJ) $(WASM_STUBS_OBJ) $(PLUGIN_SRCS) \
+$(MODSECURITY_PROXY_WASM_OUT): deps $(GENERATED_CC) $(WASM_GETENTROPY_OBJ) $(WASM_STUBS_OBJ) $(PLUGIN_SRCS) \
 		$(BUILD_DIR)/src/waf_config.h $(STAMPS_DIR)/proxy-wasm-cpp-sdk
-	@mkdir -p $(dir $(MODSEC_WASM_OUT))
+	@mkdir -p $(dir $(MODSECURITY_PROXY_WASM_OUT))
 	$(EMS_ENV) em++ --std=c++17 -O3 -flto \
 		$(EMSCRIPTEN_LINK_OPTS) \
 		--js-library $(PROXY_WASM_CPP_SDK)/proxy_wasm_intrinsics.js \
 		-I$(BUILD_DIR)/src \
 		-I$(PROXY_WASM_CPP_SDK) \
-		-I$(MODSEC_WASM)/include \
+		-I$(MODSECURITY_LIB)/include \
 		-I$(PCRE2_EM)/include \
 		$(PROXY_WASM_CPP_SDK)/proxy_wasm_intrinsics.cc \
-		$(BUILD_DIR)/src/modsec_wasm.cc \
+		$(BUILD_DIR)/src/modsecurity_proxy_wasm.cc \
 		$(BUILD_DIR)/src/metrics.cc \
 		$(BUILD_DIR)/src/waf_config.cc \
 		$(BUILD_DIR)/src/wasm_vfs.cc \
 		$(GENERATED_CC) \
-		$(MODSEC_WASM)/lib/libmodsecurity.a \
+		$(MODSECURITY_LIB)/lib/libmodsecurity.a \
 		$(WASM_GETENTROPY_OBJ) \
 		$(WASM_STUBS_OBJ) \
 		$(PCRE2_EM)/lib/libpcre2-8.a \
-		-o $(MODSEC_WASM_OUT)
+		-o $(MODSECURITY_PROXY_WASM_OUT)
 
-$(MODSEC_WAT_OUT): $(MODSEC_WASM_OUT)
-	@mkdir -p $(dir $(MODSEC_WAT_OUT))
-	$(EMS_ENV) wasm2wat $(MODSEC_WASM_OUT) -o $(MODSEC_WAT_OUT) || touch $(MODSEC_WAT_OUT)
+$(MODSECURITY_PROXY_WAT_OUT): $(MODSECURITY_PROXY_WASM_OUT)
+	@mkdir -p $(dir $(MODSECURITY_PROXY_WAT_OUT))
+	$(EMS_ENV) wasm2wat $(MODSECURITY_PROXY_WASM_OUT) -o $(MODSECURITY_PROXY_WAT_OUT) || touch $(MODSECURITY_PROXY_WAT_OUT)
 
 clean-build:
 	rm -rf $(STAMPS_DIR) $(OBJ_DIR) $(BUILD_DIR)/src/generated $(BUILD_DIR)/dist $(BUILD_DIR)/.cache

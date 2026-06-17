@@ -40,7 +40,7 @@ testoverride:
     '941110-4': 'Referer header sanitized by Envoy'
     '949110-4': 'Related to 920100. Invalid HTTP method rejected by Envoy'
 
-    # modsec-wasm crafts Host from :authority (same as coraza-proxy-wasm).
+    # modsecurity-proxy-wasm crafts Host from :authority (same as coraza-proxy-wasm).
     '920280-1': 'Rule 920280 matches missing Host; plugin crafts it from :authority'
     '920280-3': 'Rule 920280 matches missing Host; plugin crafts it from :authority'
     '920290-1': 'Rule 920290 matches empty Host; plugin crafts it from :authority'

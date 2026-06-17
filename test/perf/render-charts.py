@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 VALID_PROFILES = (
     "baseline",
     "wasm-minimal",
-    "modsec-full",
+    "modsecurity-proxy-wasm-full",
     "coraza-minimal",
     "coraza-full",
 )
@@ -27,13 +27,13 @@ TEST_ORDER = [
     ("baseline", "benign-get"),
     ("wasm-minimal", "benign-get"),
     ("coraza-minimal", "benign-get"),
-    ("modsec-full", "benign-get"),
+    ("modsecurity-proxy-wasm-full", "benign-get"),
     ("coraza-full", "benign-get"),
-    ("modsec-full", "benign-post-1k"),
+    ("modsecurity-proxy-wasm-full", "benign-post-1k"),
     ("coraza-full", "benign-post-1k"),
-    ("modsec-full", "block-xss"),
+    ("modsecurity-proxy-wasm-full", "block-xss"),
     ("coraza-full", "block-xss"),
-    ("modsec-full", "mixed"),
+    ("modsecurity-proxy-wasm-full", "mixed"),
     ("coraza-full", "mixed"),
 ]
 

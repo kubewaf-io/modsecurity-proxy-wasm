@@ -25,15 +25,15 @@ std::string ModSecMetrics::labelSuffix() const {
 const char* ModSecMetrics::phaseNameFromRule(int rule_phase) {
   switch (rule_phase) {
     case 0:
-      return modsec_metric_phase::kRequestHeaders;
+      return modsecurity_proxy_wasm_metric_phase::kRequestHeaders;
     case 1:
-      return modsec_metric_phase::kRequestBody;
+      return modsecurity_proxy_wasm_metric_phase::kRequestBody;
     case 2:
-      return modsec_metric_phase::kResponseHeaders;
+      return modsecurity_proxy_wasm_metric_phase::kResponseHeaders;
     case 3:
-      return modsec_metric_phase::kResponseBody;
+      return modsecurity_proxy_wasm_metric_phase::kResponseBody;
     case 4:
-      return modsec_metric_phase::kLogging;
+      return modsecurity_proxy_wasm_metric_phase::kLogging;
     default:
       return "unknown";
   }
@@ -96,11 +96,11 @@ bool ModSecMetrics::trackDistinct(std::string& name, size_t& distinct_count, siz
 }
 
 void ModSecMetrics::countTxTotal() {
-  incrementCounter("modsec_wasm.tx.total");
+  incrementCounter("modsecurity_proxy_wasm.tx.total");
 }
 
 void ModSecMetrics::countTxAllowed() {
-  incrementCounter("modsec_wasm.tx.allowed");
+  incrementCounter("modsecurity_proxy_wasm.tx.allowed");
 }
 
 void ModSecMetrics::countTxInterruption(const char* phase, int64_t rule_id) {
@@ -108,13 +108,13 @@ void ModSecMetrics::countTxInterruption(const char* phase, int64_t rule_id) {
     phase = "unknown";
   }
 
-  incrementCounter(std::string("modsec_wasm.tx.interruptions_phase=") + phase + labelSuffix());
+  incrementCounter(std::string("modsecurity_proxy_wasm.tx.interruptions_phase=") + phase + labelSuffix());
 
   if (!options_.per_rule_id || rule_id <= 0) {
     return;
   }
 
-  std::string name = std::string("modsec_wasm.tx.interruptions_ruleid=") + std::to_string(rule_id) +
+  std::string name = std::string("modsecurity_proxy_wasm.tx.interruptions_ruleid=") + std::to_string(rule_id) +
                      "_phase=" + phase + labelSuffix();
   if (!trackDistinct(name, distinct_rule_metrics_, kMaxDistinctRuleMetrics)) {
     return;
@@ -127,18 +127,18 @@ void ModSecMetrics::countRuleMatch(int rule_phase, int severity, bool disruptive
   const char* phase = phaseNameFromRule(rule_phase);
   const std::string suffix = labelSuffix();
 
-  incrementCounter("modsec_wasm.rule.matches");
-  incrementCounter(std::string("modsec_wasm.rule.matches_phase=") + phase + "_severity=" +
+  incrementCounter("modsecurity_proxy_wasm.rule.matches");
+  incrementCounter(std::string("modsecurity_proxy_wasm.rule.matches_phase=") + phase + "_severity=" +
                    std::to_string(severity) + suffix);
 
   if (disruptive) {
-    incrementCounter("modsec_wasm.rule.matches_disruptive");
-    incrementCounter(std::string("modsec_wasm.rule.matches_disruptive_phase=") + phase +
+    incrementCounter("modsecurity_proxy_wasm.rule.matches_disruptive");
+    incrementCounter(std::string("modsecurity_proxy_wasm.rule.matches_disruptive_phase=") + phase +
                      "_severity=" + std::to_string(severity) + suffix);
   }
 
   if (options_.per_rule_id && rule_id > 0) {
-    std::string rule_name = std::string("modsec_wasm.rule.matches_ruleid=") + std::to_string(rule_id) +
+    std::string rule_name = std::string("modsecurity_proxy_wasm.rule.matches_ruleid=") + std::to_string(rule_id) +
                            "_phase=" + phase + suffix;
     if (trackDistinct(rule_name, distinct_rule_metrics_, kMaxDistinctRuleMetrics)) {
       incrementCounter(rule_name);
@@ -153,7 +153,7 @@ void ModSecMetrics::countRuleMatch(int rule_phase, int severity, bool disruptive
     if (!isInterestingRuleTag(tag)) {
       continue;
     }
-    std::string tag_name = std::string("modsec_wasm.rule.matches_tag=") + sanitizeTagForMetric(tag) +
+    std::string tag_name = std::string("modsecurity_proxy_wasm.rule.matches_tag=") + sanitizeTagForMetric(tag) +
                            "_phase=" + phase + suffix;
     if (!trackDistinct(tag_name, distinct_tag_metrics_, kMaxDistinctTagMetrics)) {
       continue;
@@ -163,9 +163,9 @@ void ModSecMetrics::countRuleMatch(int rule_phase, int severity, bool disruptive
 }
 
 void ModSecMetrics::countResponseBodySanitized() {
-  incrementCounter("modsec_wasm.response_body.sanitized");
+  incrementCounter("modsecurity_proxy_wasm.response_body.sanitized");
 }
 
 void ModSecMetrics::countConfigureFallbackRules() {
-  incrementCounter("modsec_wasm.configure.fallback_rules");
+  incrementCounter("modsecurity_proxy_wasm.configure.fallback_rules");
 }

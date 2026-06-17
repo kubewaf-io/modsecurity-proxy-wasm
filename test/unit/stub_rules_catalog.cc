@@ -3,7 +3,7 @@
 
 #include <cstring>
 
-namespace modsec_wasm_rules {
+namespace modsecurity_proxy_wasm_rules {
 namespace {
 
 constexpr char kDemoConfData[] =
@@ -47,4 +47,4 @@ void foreach_crs_data_file(bool (*fn)(const RuleAsset&, void*), void* user) {
   (void)user;
 }
 
-}  // namespace modsec_wasm_rules
+}  // namespace modsecurity_proxy_wasm_rules

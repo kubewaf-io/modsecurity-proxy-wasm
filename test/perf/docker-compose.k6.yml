@@ -1,7 +1,7 @@
-# k6 performance test stack for modsec-wasm-plugin.
+# k6 performance test stack for modsecurity-proxy-wasm.
 #
 # Local (Envoy published to host):
-#   PERF_PROFILE=modsec-full PERF_SCENARIO=benign-get ./test/perf/run-k6.sh
+#   PERF_PROFILE=modsecurity-proxy-wasm-full PERF_SCENARIO=benign-get ./test/perf/run-k6.sh
 #
 # Compose-only k6 run (Envoy on docker network):
 #   docker compose -f test/perf/docker-compose.k6.yml run --rm k6
@@ -9,15 +9,15 @@
 services:
   envoy:
     image: ${ENVOY_IMAGE:-envoyproxy/envoy:v1.38-latest}
-    container_name: ${PERF_ENVOY_CONTAINER:-modsec-wasm-perf-envoy}
+    container_name: ${PERF_ENVOY_CONTAINER:-modsecurity-proxy-wasm-perf-envoy}
     command: ["envoy", "-c", "/etc/envoy.yaml", "--log-level", "warn"]
     ports:
       - "${PERF_HOST_PORT:-18080}:8080"
       - "${PERF_ADMIN_PORT:-19901}:9901"
     volumes:
-      - ${MODSEC_WASM:-../../dist/modsec.wasm}:/etc/modsec.wasm:ro
+      - ${MODSECURITY_PROXY_WASM:-../../dist/modsecurity-proxy-wasm.wasm}:/etc/modsecurity-proxy-wasm.wasm:ro
       - ${CORAZA_WASM:-./.coraza/main.wasm}:/etc/coraza.wasm:ro
-      - ./profiles/${PERF_PROFILE:-modsec-full}.yaml:/etc/envoy.yaml:ro
+      - ./profiles/${PERF_PROFILE:-modsecurity-proxy-wasm-full}.yaml:/etc/envoy.yaml:ro
     deploy:
       resources:
         limits:
@@ -34,7 +34,7 @@ services:
     environment:
       - BASE_URL=http://envoy:8080
       - HOST_HEADER=www.example.com
-      - PERF_PROFILE=${PERF_PROFILE:-modsec-full}
+      - PERF_PROFILE=${PERF_PROFILE:-modsecurity-proxy-wasm-full}
       - PERF_SCENARIO=${PERF_SCENARIO:-benign-get}
       - PERF_VUS=${PERF_VUS:-32}
       - PERF_DURATION=${PERF_DURATION:-60s}

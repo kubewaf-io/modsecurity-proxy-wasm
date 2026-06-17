@@ -1,14 +1,14 @@
-# Makefile for modsec-wasm-plugin
+# Makefile for modsecurity-proxy-wasm
 #
 # All compile logic lives in build/build.mk (single source of truth).
 # Container build: build/docker/Dockerfile (context = repo root).
 
-IMAGE ?= modsec-wasm:latest
+IMAGE ?= modsecurity-proxy-wasm:latest
 CTR ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 DAGGER ?= $(shell command -v dagger 2>/dev/null)
 DOCKERFILE := build/docker/Dockerfile
 DOCKERFILE_OCI := build/docker/Dockerfile.oci
-WASM_OUT := dist/modsec.wasm
+WASM_OUT := dist/modsecurity-proxy-wasm.wasm
 
 # --- Pinned dependencies (Renovate: customManagers:makefileVersions + renovate.json) ---
 
@@ -54,26 +54,26 @@ include build/test.mk
 
 help:
 	@echo "Build (make is the single source of truth; Dockerfile runs 'make all'):"
-	@echo "  make all            Build deps + dist/modsec.wasm + dist/modsec.wat"
+	@echo "  make all            Build deps + dist/modsecurity-proxy-wasm.wasm + dist/modsecurity-proxy-wasm.wat"
 	@echo "  make deps           Fetch/build emsdk, SDK, PCRE2, ModSecurity, CRS"
-	@echo "  make modsec.wasm    Link plugin (implies deps + generate-rules)"
+	@echo "  make modsecurity-proxy-wasm.wasm    Link plugin (implies deps + generate-rules)"
 	@echo ""
 	@echo "Container images:"
 	@echo "  make image          Build wasm + OCI artifact (build/docker/Dockerfile)"
 	@echo "  make image-builder  Builder stage only"
-	@echo "  make image-oci      OCI image from dist/modsec.wasm"
+	@echo "  make image-oci      OCI image from dist/modsecurity-proxy-wasm.wasm"
 	@echo "  make extract-wasm   Copy wasm from IMAGE into dist/"
 	@echo ""
 	@echo "Tests:"
 	@echo "  make deps-test         Fetch bats-core + googletest into test/.tools/"
 	@echo "  make test-unit         Native gtest for waf_config (fast)"
-	@echo "  make test-bats         Envoy integration smoke tests (needs dist/modsec.wasm)"
+	@echo "  make test-bats         Envoy integration smoke tests (needs dist/modsecurity-proxy-wasm.wasm)"
 	@echo "  make test-envoy        Alias for test-bats + verify-getentropy-stub"
 	@echo "  make test-regression   CRS go-ftw regression (FTW_INCLUDE='^941.*' for subset)"
 	@echo "  make test-fuzz         libFuzzer smoke on waf_config (needs clang++)"
 	@echo "  make test-perf-k6          k6 load test (PERF_PROFILE / PERF_SCENARIO)"
-	@echo "  make test-perf-k6-compare  modsec vs coraza pair for PERF_PROFILE"
-	@echo "  make test-perf-k6-ci       Smoke: baseline + modsec/coraza pairs"
+	@echo "  make test-perf-k6-compare  modsecurity-proxy-wasm vs coraza pair for PERF_PROFILE"
+	@echo "  make test-perf-k6-ci       Smoke: baseline + modsecurity-proxy-wasm/coraza pairs"
 	@echo "  make test-perf-charts      Overlay chart from latest perf results"
 	@echo "  make test-perf-release     Perf smoke + release overlay chart"
 	@echo "  make verify-getentropy-stub  Policy check for wasm getentropy stub"
@@ -86,7 +86,7 @@ image:
 
 image-builder:
 	@test -n "$(CTR)" || (echo "ERROR: install podman or docker" >&2; exit 1)
-	$(CTR) build $(BUILD_ARGS) -f $(DOCKERFILE) --target builder -t modsec-wasm-builder .
+	$(CTR) build $(BUILD_ARGS) -f $(DOCKERFILE) --target builder -t modsecurity-proxy-wasm-builder .
 
 image-oci:
 	@test -n "$(CTR)" || (echo "ERROR: install podman or docker" >&2; exit 1)

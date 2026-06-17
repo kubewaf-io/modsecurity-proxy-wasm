@@ -52,18 +52,18 @@ teardown_file() {
 
 @test "wasm transaction metrics are exported" {
   stats=$(envoy_admin_prometheus)
-  grep -q 'modsec_wasm_tx_total' <<<"$stats"
-  tx_total=$(grep -E '^modsec_wasm_tx_total' <<<"$stats" | awk '{print $2}' | head -1)
+  grep -q 'modsecurity_proxy_wasm_tx_total' <<<"$stats"
+  tx_total=$(grep -E '^modsecurity_proxy_wasm_tx_total' <<<"$stats" | awk '{print $2}' | head -1)
   [ -n "${tx_total:-}" ]
   [ "${tx_total}" -ge 3 ]
 }
 
 @test "wasm rule match metrics are exported" {
   stats=$(envoy_admin_prometheus)
-  rule_matches=$(grep -E '^modsec_wasm_rule_matches(\{\}|[^ ]*)\s' <<<"$stats" | awk '{print $2}' | head -1)
+  rule_matches=$(grep -E '^modsecurity_proxy_wasm_rule_matches(\{\}|[^ ]*)\s' <<<"$stats" | awk '{print $2}' | head -1)
   [ -n "${rule_matches:-}" ]
   [ "${rule_matches}" -ge 1 ]
-  rule_match_series=$(envoy_admin_stats | grep -c 'modsec_wasm.rule.matches_' || true)
+  rule_match_series=$(envoy_admin_stats | grep -c 'modsecurity_proxy_wasm.rule.matches_' || true)
   [ "${rule_match_series:-0}" -ge 1 ]
 }
 

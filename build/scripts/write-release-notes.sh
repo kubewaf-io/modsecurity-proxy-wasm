@@ -23,9 +23,9 @@ emit_section() {
 }
 
 {
-  echo "## modsec-wasm ${TAG}"
+  echo "## modsecurity-proxy-wasm ${TAG}"
   echo ""
-  echo "Artifacts: \`modsec.wasm\` (Envoy proxy-wasm / V8) and SHA256 checksum."
+  echo "Artifacts: \`modsecurity-proxy-wasm.wasm\` (Envoy proxy-wasm / V8) and SHA256 checksum."
   echo ""
   echo "## OCI image"
   echo ""
@@ -42,7 +42,7 @@ emit_section() {
   echo "## Performance benchmarks"
   echo ""
   echo "k6 smoke through Envoy (\`envoyproxy/envoy:v1.38-latest\`): baseline, minimal Wasm, full CRS."
-  echo "Each line is one profile/scenario; comparisons are directional (modsec CRS v4.27 vs coraza embedded v4.14)."
+  echo "Each line is one profile/scenario; comparisons are directional (modsecurity-proxy-wasm CRS v4.27 vs coraza embedded v4.14)."
   echo ""
   emit_section "k6 perf — all tests" "perf-overlay.png"
 } >"$OUT"

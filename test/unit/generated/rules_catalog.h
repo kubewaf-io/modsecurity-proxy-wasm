@@ -1,9 +1,9 @@
-#ifndef MODSEC_WASM_GENERATED_RULES_CATALOG_H_
-#define MODSEC_WASM_GENERATED_RULES_CATALOG_H_
+#ifndef MODSECURITY_PROXY_WASM_GENERATED_RULES_CATALOG_H_
+#define MODSECURITY_PROXY_WASM_GENERATED_RULES_CATALOG_H_
 
 #include <cstddef>
 
-namespace modsec_wasm_rules {
+namespace modsecurity_proxy_wasm_rules {
 
 struct RuleAsset {
   const char* path;
@@ -15,6 +15,6 @@ const RuleAsset* lookup(const char* path);
 void foreach_owasp_crs(bool (*fn)(const RuleAsset&, void*), void* user);
 void foreach_crs_data_file(bool (*fn)(const RuleAsset&, void*), void* user);
 
-}  // namespace modsec_wasm_rules
+}  // namespace modsecurity_proxy_wasm_rules
 
 #endif
