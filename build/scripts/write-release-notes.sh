@@ -58,6 +58,8 @@ emit_section() {
   echo "Each line is one profile/scenario; comparisons are directional (modsecurity-proxy-wasm CRS v4.27 vs coraza embedded v4.14)."
   echo ""
   emit_section "k6 perf — all tests" "perf-overlay.png"
+  emit_section "Memory — container RSS and modsecurity-proxy-wasm heap" "memory-overlay.png"
+  emit_section "Release compare (previous vs current)" "perf-release-compare.png"
 } >"$OUT"
 
 echo "==> Wrote $OUT"

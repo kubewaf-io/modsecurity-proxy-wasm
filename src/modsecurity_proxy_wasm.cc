@@ -117,7 +117,10 @@ private:
   void finalizeResponseBodyPhase();
   FilterHeadersStatus sendBlockResponse(int status);
   FilterDataStatus sendBlockResponseData(int status);
+  FilterTrailersStatus sendBlockResponseTrailers(int status);
   FilterDataStatus sanitizeInterruptedResponseBody(size_t body_buffer_length);
+  void appendBufferedRequestBody();
+  void appendBufferedResponseBody(size_t& buffer_size);
 };
 
 static RegisterContextFactory register_ModSecContext(CONTEXT_FACTORY(ModSecContext),
@@ -292,6 +295,50 @@ FilterDataStatus ModSecContext::sendBlockResponseData(int status) {
   return FilterDataStatus::StopIterationNoBuffer;
 }
 
+FilterTrailersStatus ModSecContext::sendBlockResponseTrailers(int status) {
+  if (status < 100 || status > 599) status = 403;
+  sendLocalResponse(static_cast<uint32_t>(status), "blocked by modsecurity", "", {});
+  return FilterTrailersStatus::StopIteration;
+}
+
+void ModSecContext::appendBufferedRequestBody() {
+  size_t buffer_size = 0;
+  uint32_t flags = 0;
+  if (getBufferStatus(WasmBufferType::HttpRequestBody, &buffer_size, &flags) != WasmResult::Ok) {
+    return;
+  }
+  if (buffer_size <= request_body_received_) {
+    return;
+  }
+  const size_t chunk_size = buffer_size - request_body_received_;
+  auto body = getBufferBytes(WasmBufferType::HttpRequestBody, request_body_received_, chunk_size);
+  if (body && body->size() > 0) {
+    transaction_->appendRequestBody(reinterpret_cast<const unsigned char*>(body->data()), body->size());
+    request_body_received_ += body->size();
+  } else {
+    request_body_received_ = buffer_size;
+  }
+}
+
+void ModSecContext::appendBufferedResponseBody(size_t& buffer_size) {
+  buffer_size = 0;
+  uint32_t flags = 0;
+  if (getBufferStatus(WasmBufferType::HttpResponseBody, &buffer_size, &flags) != WasmResult::Ok) {
+    return;
+  }
+  if (buffer_size <= response_body_received_) {
+    return;
+  }
+  const size_t chunk_size = buffer_size - response_body_received_;
+  auto body = getBufferBytes(WasmBufferType::HttpResponseBody, response_body_received_, chunk_size);
+  if (body && body->size() > 0) {
+    transaction_->appendResponseBody(reinterpret_cast<const unsigned char*>(body->data()), body->size());
+    response_body_received_ += body->size();
+  } else {
+    response_body_received_ = buffer_size;
+  }
+}
+
 void ModSecContext::finalizeResponseBodyPhase() {
   if (!transaction_ || response_body_processed_) {
     return;
@@ -436,8 +483,16 @@ FilterTrailersStatus ModSecContext::onRequestTrailers(uint32_t) {
   if (!transaction_ || request_body_processed_) {
     return FilterTrailersStatus::Continue;
   }
+  activateContext();
   // HTTP/2 may not set end_of_stream on the last body chunk when trailers follow.
-  return static_cast<FilterTrailersStatus>(onRequestBody(request_body_received_, true));
+  appendBufferedRequestBody();
+  transaction_->processRequestBody();
+  request_body_processed_ = true;
+  request_body_received_ = 0;
+  if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kRequestBody); st != 0) {
+    return sendBlockResponseTrailers(st);
+  }
+  return FilterTrailersStatus::Continue;
 }
 
 FilterDataStatus ModSecContext::onRequestBody(size_t body_buffer_length, bool end_of_stream) {
@@ -541,7 +596,29 @@ FilterTrailersStatus ModSecContext::onResponseTrailers(uint32_t) {
   if (!transaction_ || response_body_processed_) {
     return FilterTrailersStatus::Continue;
   }
-  return static_cast<FilterTrailersStatus>(onResponseBody(response_body_received_, true));
+  activateContext();
+
+  size_t buffer_size = 0;
+  if (response_body_interrupted_) {
+    uint32_t flags = 0;
+    if (getBufferStatus(WasmBufferType::HttpResponseBody, &buffer_size, &flags) == WasmResult::Ok) {
+      sanitizeInterruptedResponseBody(buffer_size);
+    }
+    return FilterTrailersStatus::Continue;
+  }
+
+  appendBufferedResponseBody(buffer_size);
+  if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kResponseBody); st != 0) {
+    response_body_processed_ = true;
+    sanitizeInterruptedResponseBody(buffer_size);
+    return FilterTrailersStatus::Continue;
+  }
+
+  finalizeResponseBodyPhase();
+  if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kResponseBody); st != 0) {
+    sanitizeInterruptedResponseBody(buffer_size);
+  }
+  return FilterTrailersStatus::Continue;
 }
 
 FilterDataStatus ModSecContext::onResponseBody(size_t body_buffer_length, bool end_of_stream) {

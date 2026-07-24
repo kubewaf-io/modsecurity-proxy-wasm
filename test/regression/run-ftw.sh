@@ -127,7 +127,7 @@ prime_waf_from_host() {
   local url="http://127.0.0.1:${FTW_HOST_PORT}/status/200"
   echo "==> Priming WAF logs from host"
   for _ in 1 2 3 4 5; do
-    curl -sf -H "Host: localhost" "$url" -o /dev/null || true
+    curl -sf -H "Host: localhost" -H "X-CRS-Test: ftw-prime" "$url" -o /dev/null || true
   done
 }
 
@@ -142,7 +142,8 @@ wait_for_waf_logs() {
         grep -qF '[modsecurity-proxy-wasm][rule]' /logs/envoy.log 2>/dev/null; then
       return 0
     fi
-    curl -sf -H "Host: localhost" "http://127.0.0.1:${FTW_HOST_PORT}/status/200" -o /dev/null || true
+    curl -sf -H "Host: localhost" -H "X-CRS-Test: ftw-wait" \
+      "http://127.0.0.1:${FTW_HOST_PORT}/status/200" -o /dev/null || true
     sleep 2
     retries=$((retries - 1))
   done

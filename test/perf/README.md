@@ -108,6 +108,7 @@ Each run: `test/perf/results/run-<timestamp>-<profile>-<scenario>/`
 - `k6-summary.json`, `k6-stdout.txt`, **`k6-report.html`** (small self-contained HTML)
 - `k6-compare.html` (after `--compare` / CI smoke pairs)
 - `envoy-stats-*.txt`, `envoy-prometheus-*.txt`
+- `memory-snapshot.json`, `memory-samples.log` (peak container RSS during k6)
 - `modsecurity-proxy-wasm-metrics-*.txt` (modsecurity-proxy-wasm profiles)
 - `coraza-wasm-metrics-*.txt` (coraza profiles — `waf_filter_tx_*`)
 
@@ -122,9 +123,14 @@ xdg-open test/perf/release-charts/perf-modsecurity-proxy-wasm-full-benign-get.pn
 
 ```bash
 pip install -r test/perf/requirements-charts.txt
-make test-perf-charts          # bundle PNGs into test/perf/release-charts/
-make test-perf-release         # smoke perf + chart bundle
+make test-perf-charts          # latency overlay + memory overlay (+ release compare if present)
+make test-perf-release-compare # k6: previous GitHub release wasm vs current tag
+make test-perf-release         # smoke perf + release compare + chart bundle
 ```
+
+Each run directory also gets `memory-snapshot.json` (peak container RSS + `modsecurity_proxy_wasm.memory.wasm_heap_bytes` from the plugin gauge).
+
+Release compare downloads the previous tag’s `modsecurity-proxy-wasm.wasm` from GitHub Releases and benchmarks `benign-get` + `benign-post-1k` against the current build.
 
 **Release publish:** pushing a `v*` tag runs [`.github/workflows/release.yml`](../../.github/workflows/release.yml), which:
 

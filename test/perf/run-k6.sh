@@ -35,10 +35,12 @@ KEEP_RUNNING="${KEEP_RUNNING:-0}"
 PERF_CI="${PERF_CI:-0}"
 RUN_COMPARE="${RUN_COMPARE:-0}"
 
-WASM="$ROOT_DIR/dist/modsecurity-proxy-wasm.wasm"
+WASM="${PERF_WASM:-$ROOT_DIR/dist/modsecurity-proxy-wasm.wasm}"
 CORAZA_WASM="$SCRIPT_DIR/.coraza/main.wasm"
 RESULTS_DIR="$SCRIPT_DIR/results"
-STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+STAMP="${PERF_RUN_STAMP:-$(date -u +%Y%m%dT%H%M%SZ)}"
+PERF_RELEASE_TAG="${PERF_RELEASE_TAG:-}"
+MEMORY_SAMPLER_PID=""
 
 VALID_PROFILES=(baseline wasm-minimal modsecurity-proxy-wasm-full coraza-minimal coraza-full)
 VALID_SCENARIOS=(benign-get benign-post-1k block-xss mixed)
@@ -171,7 +173,40 @@ cleanup_envoy() {
   $CTR rm -f "$PERF_ENVOY_CONTAINER" >/dev/null 2>&1 || true
 }
 
-trap cleanup_envoy EXIT
+trap 'stop_memory_sampler; cleanup_envoy' EXIT
+
+start_memory_sampler() {
+  local run_dir="$1"
+  [[ -n "$CTR" ]] || return 0
+  : > "$run_dir/memory-samples.log"
+  (
+    while true; do
+      $CTR stats --no-stream --format '{{.MemUsage}}' "$PERF_ENVOY_CONTAINER" 2>/dev/null \
+        >> "$run_dir/memory-samples.log" || true
+      sleep 2
+    done
+  ) &
+  MEMORY_SAMPLER_PID=$!
+}
+
+stop_memory_sampler() {
+  if [[ -n "${MEMORY_SAMPLER_PID:-}" ]]; then
+    kill "$MEMORY_SAMPLER_PID" 2>/dev/null || true
+    wait "$MEMORY_SAMPLER_PID" 2>/dev/null || true
+    MEMORY_SAMPLER_PID=""
+  fi
+}
+
+run_dir_name() {
+  local profile="$1"
+  local scenario="$2"
+  if [[ -n "$PERF_RELEASE_TAG" ]]; then
+    local tag_slug="${PERF_RELEASE_TAG//./-}"
+    echo "run-${STAMP}-rel-${tag_slug}-${profile}-${scenario}"
+  else
+    echo "run-${STAMP}-${profile}-${scenario}"
+  fi
+}
 
 wait_for_envoy() {
   local i
@@ -193,10 +228,14 @@ LAST_RUN_DIR=""
 run_one() {
   local profile="$1"
   local scenario="$2"
-  local run_dir="$RESULTS_DIR/run-${STAMP}-${profile}-${scenario}"
+  local run_dir="$RESULTS_DIR/$(run_dir_name "$profile" "$scenario")"
   mkdir -p "$run_dir"
   chmod 777 "$run_dir"
   LAST_RUN_DIR="$run_dir"
+  if [[ -n "$PERF_RELEASE_TAG" ]]; then
+    echo "$PERF_RELEASE_TAG" >"$run_dir/wasm-release-tag.txt"
+    echo "$WASM" >"$run_dir/wasm-path.txt"
+  fi
 
   echo "==> Perf run: profile=${profile} scenario=${scenario}"
   echo "    vus=${PERF_VUS} duration=${PERF_DURATION} warmup=${PERF_WARMUP} p99<${PERF_P99_MS}ms"
@@ -254,6 +293,7 @@ run_one() {
   fi
 
   echo "==> k6 measured run..."
+  start_memory_sampler "$run_dir"
   $CTR run --rm --network "container:${PERF_ENVOY_CONTAINER}" \
     -e BASE_URL="http://127.0.0.1:8080" \
     -e HOST_HEADER="www.example.com" \
@@ -268,9 +308,12 @@ run_one() {
     "$K6_IMAGE" run "${k6_quiet[@]}" \
       --summary-export "/results/k6-summary.json" \
       "/scripts/scenarios/${scenario}.js" | tee "$run_dir/k6-stdout.txt"
+  stop_memory_sampler
 
   ADMIN_URL="http://127.0.0.1:${PERF_ADMIN_PORT}" \
     "$SCRIPT_DIR/collect-stats.sh" after "$run_dir"
+  chmod +x "$SCRIPT_DIR/finalize-memory.sh"
+  PERF_ENVOY_CONTAINER="$PERF_ENVOY_CONTAINER" "$SCRIPT_DIR/finalize-memory.sh" "$run_dir"
 
   if [[ "$profile" == "modsecurity-proxy-wasm-full" ]]; then
     if ! grep -q 'modsecurity_proxy_wasm_tx_total' "$run_dir/envoy-prometheus-after.txt" 2>/dev/null; then

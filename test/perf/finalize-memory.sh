@@ -14,13 +14,12 @@ else
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-python3 - "$OUT_DIR" "$CONTAINER" "$CTR" <<'PY'
+PYTHONPATH="$SCRIPT_DIR" python3 - "$OUT_DIR" "$CONTAINER" "$CTR" <<'PY'
 import json
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from memory import parse_prometheus_memory, peak_from_samples
+from memory import parse_modsecurity_memory, parse_prometheus_memory, peak_from_samples
 
 out_dir = Path(sys.argv[1])
 container = sys.argv[2]
@@ -55,9 +54,14 @@ if ctr:
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
 
+modsec_after = parse_modsecurity_memory(out_dir / "envoy-prometheus-after.txt")
+if not modsec_after:
+    modsec_after = parse_modsecurity_memory(out_dir / "modsecurity-proxy-wasm-memory-after.txt")
+
 snapshot = {
     "envoy_before": load_envoy("before"),
     "envoy_after": load_envoy("after"),
+    "modsecurity_after": modsec_after,
     "peak_container": peak,
     "container_after": container_after or {},
 }

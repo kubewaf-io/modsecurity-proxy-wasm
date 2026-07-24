@@ -8,6 +8,8 @@ import json
 import sys
 from pathlib import Path
 
+from memory import load_run_memory, memory_mb
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -233,6 +235,10 @@ def render_compare(
     plt.close(fig)
 
 
+def is_release_run(path: Path) -> bool:
+    return (path / "wasm-release-tag.txt").is_file()
+
+
 def parse_run_dir(path: Path) -> tuple[str, str, str] | None:
     name = path.name
     if not name.startswith("run-"):
@@ -243,6 +249,18 @@ def parse_run_dir(path: Path) -> tuple[str, str, str] | None:
         if not rest.endswith(suffix):
             continue
         middle = rest[: -len(suffix)]
+        rel_prefix = "-rel-"
+        if rel_prefix in middle:
+            rel_idx = middle.index(rel_prefix)
+            stamp = middle[:rel_idx]
+            tail = middle[rel_idx + len(rel_prefix) :]
+            for profile in VALID_PROFILES:
+                profile_suffix = f"-{profile}"
+                if tail.endswith(profile_suffix):
+                    tag_slug = tail[: -len(profile_suffix)]
+                    if stamp and tag_slug:
+                        return f"{stamp}-rel-{tag_slug}", profile, scenario
+            continue
         for profile in VALID_PROFILES:
             profile_suffix = f"-{profile}"
             if middle.endswith(profile_suffix):
@@ -277,10 +295,16 @@ def find_latest_run(results_root: Path, profile: str, scenario: str) -> Path | N
     return sorted(matches, key=lambda p: p.name, reverse=True)[0]
 
 
-def collect_latest_summaries(results_root: Path) -> list[tuple[str, str, dict]]:
+def collect_latest_summaries(
+    results_root: Path,
+    *,
+    include_release_runs: bool = False,
+) -> list[tuple[str, dict]]:
     latest: dict[tuple[str, str], tuple[str, dict]] = {}
     for child in results_root.iterdir():
         if not child.is_dir():
+            continue
+        if not include_release_runs and is_release_run(child):
             continue
         parsed = parse_run_dir(child)
         if not parsed:
@@ -298,20 +322,169 @@ def collect_latest_summaries(results_root: Path) -> list[tuple[str, str, dict]]:
     return [(test_label(profile, scenario), latest[(profile, scenario)][1]) for profile, scenario in ordered]
 
 
+def collect_latest_memory(
+    results_root: Path,
+    *,
+    include_release_runs: bool = False,
+) -> list[tuple[str, dict[str, float | None]]]:
+    latest: dict[tuple[str, str], tuple[str, Path]] = {}
+    for child in results_root.iterdir():
+        if not child.is_dir():
+            continue
+        if not include_release_runs and is_release_run(child):
+            continue
+        parsed = parse_run_dir(child)
+        if not parsed:
+            continue
+        stamp, profile, scenario = parsed
+        if not (child / "memory-snapshot.json").is_file() and not (
+            child / "envoy-prometheus-after.txt"
+        ).is_file():
+            continue
+        key = (profile, scenario)
+        prev = latest.get(key)
+        if prev is None or stamp > prev[0]:
+            latest[key] = (stamp, child)
+
+    ordered = sorted(latest, key=lambda k: test_sort_key(k[0], k[1]))
+    out: list[tuple[str, dict[str, float | None]]] = []
+    for profile, scenario in ordered:
+        snap = memory_mb(load_run_memory(latest[(profile, scenario)][1]))
+        out.append((test_label(profile, scenario), snap))
+    return out
+
+
+def render_memory_overlay(
+    series: list[tuple[str, dict[str, float | None]]],
+    title: str,
+    output: Path,
+) -> None:
+    apply_style()
+    labels = [name for name, _ in series]
+    peak = [vals.get("container_peak_rss_mb") for _, vals in series]
+    modsec = [vals.get("modsecurity_wasm_heap_mb") for _, vals in series]
+
+    if not any(v is not None for v in peak + modsec):
+        raise ValueError("no memory data to plot")
+
+    x = list(range(len(labels)))
+    width = 0.36
+    fig, ax = plt.subplots(figsize=(11, 6), dpi=120)
+    peak_vals = [float(v) if v is not None else 0.0 for v in peak]
+    modsec_vals = [float(v) if v is not None else 0.0 for v in modsec]
+    ax.bar(
+        [i - width / 2 for i in x],
+        peak_vals,
+        width,
+        label="Envoy container peak RSS",
+        color="#f0883e",
+    )
+    ax.bar(
+        [i + width / 2 for i in x],
+        modsec_vals,
+        width,
+        label="modsecurity-proxy-wasm heap",
+        color="#2ea043",
+    )
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=35, ha="right", fontsize=8)
+    ax.set_ylabel("memory (MiB)")
+    ax.set_title(title, fontsize=12, fontweight="bold", pad=12)
+    ax.legend(loc="upper left", fontsize=9)
+    ax.grid(axis="y", alpha=0.35)
+    fig.tight_layout()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, bbox_inches="tight")
+    plt.close(fig)
+
+
+def render_release_compare(meta_path: Path, output: Path) -> None:
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    prev_tag = meta["previous_tag"]
+    curr_tag = meta["current_tag"]
+    scenarios = list(meta.get("scenarios", {}).keys())
+    if not scenarios:
+        raise ValueError("release compare metadata has no scenarios")
+
+    left_p99: list[float | None] = []
+    right_p99: list[float | None] = []
+    for scenario in scenarios:
+        entry = meta["scenarios"][scenario]
+        left_path = entry.get("previous")
+        right_path = entry.get("current")
+        left = load_summary(Path(left_path) / "k6-summary.json") if left_path else {}
+        right = load_summary(Path(right_path) / "k6-summary.json") if right_path else {}
+        left_p99.append(metric_ms(left, "http_req_duration", "p(99)"))
+        right_p99.append(metric_ms(right, "http_req_duration", "p(99)"))
+
+    apply_style()
+    x = list(range(len(scenarios)))
+    width = 0.36
+    fig, ax = plt.subplots(figsize=(9, 5), dpi=120)
+    ax.bar(
+        [i - width / 2 for i in x],
+        [v if v is not None else 0.0 for v in left_p99],
+        width,
+        label=prev_tag,
+        color="#8b9cb3",
+    )
+    ax.bar(
+        [i + width / 2 for i in x],
+        [v if v is not None else 0.0 for v in right_p99],
+        width,
+        label=curr_tag,
+        color="#2ea043",
+    )
+    ax.set_xticks(x)
+    ax.set_xticklabels(scenarios)
+    ax.set_ylabel("p99 latency (ms)")
+    ax.set_title(
+        f"Release compare — {prev_tag} vs {curr_tag}",
+        fontsize=12,
+        fontweight="bold",
+        pad=12,
+    )
+    ax.legend(loc="upper right", fontsize=9)
+    ax.grid(axis="y", alpha=0.35)
+    fig.tight_layout()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, bbox_inches="tight")
+    plt.close(fig)
+
+
 def bundle(results_root: Path, output_dir: Path) -> list[Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     for old in output_dir.glob("perf-*.png"):
-        if old.name != "perf-overlay.png":
+        if old.name not in ("perf-overlay.png", "memory-overlay.png", "perf-release-compare.png"):
             old.unlink()
-    series = collect_latest_summaries(results_root)
-    if not series:
-        print("WARN: no k6-summary.json files found under results/", file=sys.stderr)
-        return []
+    written: list[Path] = []
 
-    out = output_dir / "perf-overlay.png"
-    render_overlay(series, "k6 perf — all tests", out)
-    print(f"==> Wrote {out} ({len(series)} series)")
-    return [out]
+    series = collect_latest_summaries(results_root)
+    if series:
+        out = output_dir / "perf-overlay.png"
+        render_overlay(series, "k6 perf — all tests", out)
+        print(f"==> Wrote {out} ({len(series)} series)")
+        written.append(out)
+    else:
+        print("WARN: no k6-summary.json files found under results/", file=sys.stderr)
+
+    memory_series = collect_latest_memory(results_root)
+    if memory_series:
+        mem_out = output_dir / "memory-overlay.png"
+        render_memory_overlay(memory_series, "Memory — all tests", mem_out)
+        print(f"==> Wrote {mem_out} ({len(memory_series)} series)")
+        written.append(mem_out)
+    else:
+        print("WARN: no memory snapshots found under results/", file=sys.stderr)
+
+    release_meta = results_root / "release-compare.json"
+    if release_meta.is_file():
+        rel_out = output_dir / "perf-release-compare.png"
+        render_release_compare(release_meta, rel_out)
+        print(f"==> Wrote {rel_out}")
+        written.append(rel_out)
+
+    return written
 
 
 def main() -> int:
@@ -340,6 +513,18 @@ def main() -> int:
     bundle_p.add_argument("results_root", type=Path)
     bundle_p.add_argument("-o", "--output", type=Path, required=True)
 
+    memory_p = sub.add_parser("memory", help="Memory overlay from latest runs")
+    memory_p.add_argument("results_root", type=Path)
+    memory_p.add_argument("-o", "--output", type=Path, required=True)
+    memory_p.add_argument("--title", default="Memory — all tests")
+
+    release_p = sub.add_parser(
+        "release-compare",
+        help="Chart p99 latency from release-compare.json metadata",
+    )
+    release_p.add_argument("metadata", type=Path)
+    release_p.add_argument("-o", "--output", type=Path, required=True)
+
     args = parser.parse_args()
 
     if args.cmd == "single":
@@ -366,6 +551,13 @@ def main() -> int:
             )
             series.append((label, load_summary(path)))
         render_overlay(series, args.title, args.output)
+        print(f"==> Wrote {args.output}")
+    elif args.cmd == "memory":
+        series = collect_latest_memory(args.results_root)
+        render_memory_overlay(series, args.title, args.output)
+        print(f"==> Wrote {args.output}")
+    elif args.cmd == "release-compare":
+        render_release_compare(args.metadata, args.output)
         print(f"==> Wrote {args.output}")
     else:
         bundle(args.results_root, args.output)

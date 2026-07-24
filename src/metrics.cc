@@ -2,13 +2,18 @@
 
 #include <cctype>
 
+#include <emscripten/emscripten.h>
+#include <emscripten/heap.h>
+
 #include "proxy_wasm_intrinsics.h"
 
 void ModSecMetrics::configure(const WafMetricOptions& options) {
   options_ = options;
   metric_ids_.clear();
+  tx_count_ = 0;
   distinct_rule_metrics_ = 0;
   distinct_tag_metrics_ = 0;
+  recordWasmMemory();
 }
 
 std::string ModSecMetrics::labelSuffix() const {
@@ -84,6 +89,24 @@ void ModSecMetrics::incrementCounter(const std::string& name) {
   incrementMetric(it->second, 1);
 }
 
+void ModSecMetrics::setGauge(const std::string& name, uint64_t value) {
+  auto it = metric_ids_.find(name);
+  if (it == metric_ids_.end()) {
+    uint32_t id = 0;
+    if (defineMetric(MetricType::Gauge, name, &id) != WasmResult::Ok) {
+      return;
+    }
+    metric_ids_[name] = id;
+    it = metric_ids_.find(name);
+  }
+  recordMetric(it->second, value);
+}
+
+void ModSecMetrics::recordWasmMemory() {
+  const uint64_t heap_bytes = static_cast<uint64_t>(emscripten_get_heap_size());
+  setGauge("modsecurity_proxy_wasm.memory.wasm_heap_bytes", heap_bytes);
+}
+
 bool ModSecMetrics::trackDistinct(std::string& name, size_t& distinct_count, size_t max_distinct) {
   if (metric_ids_.find(name) != metric_ids_.end()) {
     return true;
@@ -97,6 +120,10 @@ bool ModSecMetrics::trackDistinct(std::string& name, size_t& distinct_count, siz
 
 void ModSecMetrics::countTxTotal() {
   incrementCounter("modsecurity_proxy_wasm.tx.total");
+  ++tx_count_;
+  if ((tx_count_ % 100) == 0) {
+    recordWasmMemory();
+  }
 }
 
 void ModSecMetrics::countTxAllowed() {

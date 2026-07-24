@@ -83,8 +83,13 @@ jobs:
       - name: Run performance benchmarks and render overlay chart
         run: make test-perf-release ENVOY_IMAGE=envoyproxy/envoy:v1.38-latest
 
-      - name: Verify perf overlay chart
-        run: test -f test/perf/release-charts/perf-overlay.png
+      - name: Verify perf charts
+        run: |
+          test -f test/perf/release-charts/perf-overlay.png
+          test -f test/perf/release-charts/memory-overlay.png
+          if [[ -f test/perf/results/release-compare.json ]]; then
+            test -f test/perf/release-charts/perf-release-compare.png
+          fi
 
       - name: Conventional commit changelog since last release
         id: changelog
@@ -134,4 +139,4 @@ jobs:
           files: |
             dist/modsecurity-proxy-wasm.wasm
             dist/modsecurity-proxy-wasm.wasm.sha256
-            test/perf/release-charts/perf-overlay.png
+            test/perf/release-charts/*.png

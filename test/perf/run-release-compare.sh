@@ -41,8 +41,7 @@ resolve_previous_tag() {
       fi
     done
   fi
-  echo "ERROR: could not resolve PREVIOUS_TAG (set explicitly or provide CURRENT_TAG with git tags)" >&2
-  exit 2
+  return 1
 }
 
 if [[ -z "$CURRENT_TAG" ]]; then
@@ -54,7 +53,10 @@ fi
 }
 
 resolve_previous_tag
-[[ -n "$PREVIOUS_TAG" ]] || exit 2
+if [[ -z "$PREVIOUS_TAG" ]]; then
+  echo "WARN: no previous release tag — skipping release compare (first release?)" >&2
+  exit 0
+fi
 
 echo "==> Release perf compare: ${PREVIOUS_TAG} -> ${CURRENT_TAG} (${REPO})"
 

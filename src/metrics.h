@@ -26,9 +26,11 @@ class ModSecMetrics {
                       const std::list<std::string>& tags);
   void countResponseBodySanitized();
   void countConfigureFallbackRules();
+  void recordWasmMemory();
 
  private:
   void incrementCounter(const std::string& name);
+  void setGauge(const std::string& name, uint64_t value);
   bool trackDistinct(std::string& name, size_t& distinct_count, size_t max_distinct);
   std::string labelSuffix() const;
   static const char* phaseNameFromRule(int rule_phase);
@@ -37,6 +39,7 @@ class ModSecMetrics {
 
   WafMetricOptions options_;
   std::unordered_map<std::string, uint32_t> metric_ids_;
+  uint64_t tx_count_{0};
   size_t distinct_rule_metrics_{0};
   size_t distinct_tag_metrics_{0};
   static constexpr size_t kMaxDistinctRuleMetrics = 512;

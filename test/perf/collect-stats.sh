@@ -19,6 +19,9 @@ grep -E '^(http\.ingress_http\.|wasm\.|modsecurity_proxy_wasm|waf_filter)' "${OU
 grep -E '^modsecurity_proxy_wasm' "${OUT_DIR}/envoy-prometheus-${LABEL}.txt" \
   > "${OUT_DIR}/modsecurity-proxy-wasm-metrics-${LABEL}.txt" || true
 
+grep -E '^modsecurity_proxy_wasm_memory_' "${OUT_DIR}/envoy-prometheus-${LABEL}.txt" \
+  > "${OUT_DIR}/modsecurity-proxy-wasm-memory-${LABEL}.txt" || true
+
 grep -E '^waf_filter' "${OUT_DIR}/envoy-prometheus-${LABEL}.txt" \
   > "${OUT_DIR}/coraza-wasm-metrics-${LABEL}.txt" || true
 

@@ -109,9 +109,11 @@ jobs:
       - name: Render perf overlay chart
         if: always()
         run: make test-perf-charts
-      - name: Verify perf overlay chart
+      - name: Verify perf charts
         if: always()
-        run: test -f test/perf/release-charts/perf-overlay.png
+        run: |
+          test -f test/perf/release-charts/perf-overlay.png
+          test -f test/perf/release-charts/memory-overlay.png
       - name: Upload perf results
         if: always()
         uses: actions/upload-artifact@v4
@@ -123,5 +125,6 @@ jobs:
             test/perf/results/**/k6-summary.json
             test/perf/results/**/k6-stdout.txt
             test/perf/release-charts/perf-overlay.png
+            test/perf/release-charts/memory-overlay.png
           retention-days: 14
           if-no-files-found: ignore

@@ -20,7 +20,7 @@ UNIT_LDFLAGS    := -L$(UNIT_BUILD_DIR) -lgtest_main -lgtest -pthread
 
 .PHONY: deps-test deps-perf-charts test-unit test-fuzz test-bats \
 	test-perf-k6 test-perf-k6-compare test-perf-k6-ci test-perf-k6-keep \
-	test-perf-charts test-perf-release
+	test-perf-charts test-perf-release-compare test-perf-release
 
 deps-test:
 	@bash $(TEST_DIR)/install-test-tools.sh
@@ -74,16 +74,19 @@ test-bats: deps-test verify-getentropy-stub
 	ENVOY_IMAGE=$(ENVOY_IMAGE) "$(BATS_BIN)" $(TEST_DIR)/integration/bats/
 
 test-perf-k6:
-	@chmod +x $(TEST_DIR)/perf/run-k6.sh $(TEST_DIR)/perf/collect-stats.sh $(TEST_DIR)/perf/fetch-coraza-wasm.sh
+	@chmod +x $(TEST_DIR)/perf/run-k6.sh $(TEST_DIR)/perf/collect-stats.sh \
+		$(TEST_DIR)/perf/finalize-memory.sh $(TEST_DIR)/perf/fetch-coraza-wasm.sh
 	ENVOY_IMAGE=$(ENVOY_IMAGE) $(TEST_DIR)/perf/run-k6.sh
 
 test-perf-k6-compare:
-	@chmod +x $(TEST_DIR)/perf/run-k6.sh $(TEST_DIR)/perf/collect-stats.sh $(TEST_DIR)/perf/fetch-coraza-wasm.sh
+	@chmod +x $(TEST_DIR)/perf/run-k6.sh $(TEST_DIR)/perf/collect-stats.sh \
+		$(TEST_DIR)/perf/finalize-memory.sh $(TEST_DIR)/perf/fetch-coraza-wasm.sh
 	ENVOY_IMAGE=$(ENVOY_IMAGE) $(TEST_DIR)/perf/run-k6.sh --compare
 
 test-perf-k6-ci:
 	@test -f $(WASM_OUT) || (echo "ERROR: $(WASM_OUT) not found. Run: make image" >&2; exit 1)
-	@chmod +x $(TEST_DIR)/perf/run-k6.sh $(TEST_DIR)/perf/collect-stats.sh $(TEST_DIR)/perf/fetch-coraza-wasm.sh
+	@chmod +x $(TEST_DIR)/perf/run-k6.sh $(TEST_DIR)/perf/collect-stats.sh \
+		$(TEST_DIR)/perf/finalize-memory.sh $(TEST_DIR)/perf/fetch-coraza-wasm.sh
 	ENVOY_IMAGE=$(ENVOY_IMAGE) PERF_CI=1 $(TEST_DIR)/perf/run-k6.sh --ci --all-smoke
 
 test-perf-k6-keep:
@@ -104,4 +107,12 @@ test-perf-charts: deps-perf-charts
 		-o $(TEST_DIR)/perf/release-charts
 	@test -f $(TEST_DIR)/perf/release-charts/perf-overlay.png
 
-test-perf-release: test-perf-k6-ci test-perf-charts
+test-perf-release-compare:
+	@chmod +x $(TEST_DIR)/perf/run-release-compare.sh $(TEST_DIR)/perf/fetch-release-wasm.sh \
+		$(TEST_DIR)/perf/run-k6.sh $(TEST_DIR)/perf/collect-stats.sh $(TEST_DIR)/perf/finalize-memory.sh
+	@CURRENT_TAG="$${GITHUB_REF_NAME:-$$(git describe --tags --abbrev=0 2>/dev/null || true)}" \
+		GITHUB_REPOSITORY="$${GITHUB_REPOSITORY:-}" \
+		PERF_CI=1 ENVOY_IMAGE=$(ENVOY_IMAGE) \
+		$(TEST_DIR)/perf/run-release-compare.sh
+
+test-perf-release: test-perf-k6-ci test-perf-release-compare test-perf-charts
