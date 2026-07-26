@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
@@ -35,61 +34,25 @@ def c_escaped_concat(data: str, tag: str) -> str:
 CRS_DATA_PREFIX = "@crs-data/"
 
 
-def _load_pm_words(data_path: Path) -> list[str]:
-    words: list[str] = []
-    for line in data_path.read_text(encoding="utf-8", errors="replace").splitlines():
-        s = line.strip()
-        if not s or s.startswith("#"):
-            continue
-        words.append(s)
-    return words
-
-
-# Keep expanded @pm operators under a safe size for ModSecurity/V8 rule load.
-# Large phrase lists (e.g. php-errors.data) can abort onConfigure if inlined whole.
-_MAX_PM_INLINE_CHARS = 12_000
-
-
-def _expand_pm_from_file(data_name: str, rules_dir: Path) -> str:
-    # Filename only — never include SecRule quoting in the match/replacement.
-    data_name = data_name.strip().strip("\"'")
-    # Skip comment prose that is not a real @pmFromFile directive.
-    if not data_name.endswith(".data"):
-        return f"@pmFromFile {data_name}"
-    path = rules_dir / data_name
-    if not path.is_file():
-        return f"@rx ^$  # wasm-missing-data:{data_name}"
-    words = _load_pm_words(path)
-    if not words:
-        return "@rx ^$"
-    # Escape for use inside a double-quoted SecRule operator string.
-    escaped = [w.replace("\\", "\\\\").replace('"', '\\"') for w in words]
-    joined = " ".join(escaped)
-    if len(joined) > _MAX_PM_INLINE_CHARS:
-        return f"@rx ^$  # wasm-pm-too-large:{data_name}:{len(joined)}"
-    return "@pm " + joined
-
-
 def wasm_safe_rule_conf(conf: str, rules_dir: Path) -> str:
-    # Envoy V8 has no WASI path_open — inline @pmFromFile at build time.
+    """Prepare CRS conf for wasm: keep @pmFromFile (MEMFS), disable @rxFromFile.
+
+    CRS .data phrase lists are embedded under @crs-data/* and written into
+    /modsecurity-proxy-wasm-rules at plugin start (see wasm_vfs.cc). ModSecurity
+    PmFromFile resolves basenames relative to the rule reference directory, so
+    operators stay as ``@pmFromFile scanners-user-agents.data`` etc.
+    """
+    del rules_dir  # reserved for future path rewrites
     out: list[str] = []
     for line in conf.splitlines():
-        if "@rxFromFile" in line:
-            out.append("# wasm-disabled (no filesystem): " + line)
-            continue
-        # Only rewrite real directives, not comment prose about @pmFromFile.
         stripped = line.lstrip()
         if stripped.startswith("#"):
             out.append(line)
             continue
-        if "@pmFromFile" in line:
-            # Do NOT consume the closing SecRule quote after the filename.
-            # e.g. "@pmFromFile foo.data"  →  "@pm word1 word2"
-            line = re.sub(
-                r"@pmFromFile\s+([^\"\s]+)",
-                lambda m: _expand_pm_from_file(m.group(1), rules_dir),
-                line,
-            )
+        if "@rxFromFile" in line:
+            out.append("# wasm-disabled (no filesystem): " + line)
+            continue
+        # Keep @pmFromFile as-is for runtime MEMFS resolution.
         out.append(line)
     return "\n".join(out) + "\n"
 

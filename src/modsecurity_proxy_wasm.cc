@@ -236,9 +236,13 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
 
   rules_ = new RulesSet();
 
+  // Phrase lists live in the embedded catalog and are served to PmFromFile via
+  // modsecurity_proxy_wasm_resolve_data_file (Envoy V8 has no writable MEMFS).
   if (!modsecurity_proxy_wasm_mount_crs_data_files()) {
-    LOG_WARN("[modsecurity-proxy-wasm] CRS .data MEMFS mount failed (non-fatal when @pmFromFile was inlined at build time)");
+    LOG_ERROR("[modsecurity-proxy-wasm] CRS .data catalog missing — @pmFromFile rules will not load");
+    return false;
   }
+  LOG_WARN("[modsecurity-proxy-wasm] CRS .data phrase lists ready (catalog-backed @pmFromFile)");
 
   std::string err;
   if (!applyWafConfiguration(config, loadRuleChunk, rules_, err)) {

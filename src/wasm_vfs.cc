@@ -9,6 +9,8 @@
 namespace {
 
 constexpr char kRulesDir[] = "/modsecurity-proxy-wasm-rules";
+constexpr char kCrsDataPrefix[] = "@crs-data/";
+constexpr size_t kCrsDataPrefixLen = sizeof(kCrsDataPrefix) - 1;
 
 std::string ruleRefPathImpl(const char* label) {
   static thread_local std::string ref;
@@ -54,13 +56,60 @@ std::string ruleRefPathImpl(const char* label) {
   return ref;
 }
 
+// Count embedded CRS .data assets (sanity for configure).
+int countCrsDataFiles() {
+  int n = 0;
+  modsecurity_proxy_wasm_rules::foreach_crs_data_file(
+      [](const modsecurity_proxy_wasm_rules::RuleAsset&, void* user) -> bool {
+        *static_cast<int*>(user) += 1;
+        return true;
+      },
+      &n);
+  return n;
+}
+
 }  // namespace
 
+// Called from ModSecurity PmFromFile (patched) instead of ifstream when the
+// Envoy V8 runtime has no writable filesystem. name is a CRS .data basename
+// (e.g. "scanners-user-agents.data") or a path ending in that basename.
+extern "C" const char* modsecurity_proxy_wasm_resolve_data_file(const char* name,
+                                                                std::size_t* out_size) {
+  if (name == nullptr || name[0] == '\0') {
+    return nullptr;
+  }
+  // Basename only (find_resource may pass "dir/file.data").
+  const char* base = name;
+  if (const char* slash = std::strrchr(name, '/')) {
+    base = slash + 1;
+  }
+  if (const char* bslash = std::strrchr(base, '\\')) {
+    base = bslash + 1;
+  }
+  if (base[0] == '\0') {
+    return nullptr;
+  }
+
+  std::string key;
+  key.reserve(kCrsDataPrefixLen + std::strlen(base));
+  key.append(kCrsDataPrefix);
+  key.append(base);
+
+  const auto* asset = modsecurity_proxy_wasm_rules::lookup(key.c_str());
+  if (asset == nullptr || asset->data == nullptr) {
+    return nullptr;
+  }
+  if (out_size != nullptr) {
+    *out_size = asset->size;
+  }
+  return asset->data;
+}
+
 bool modsecurity_proxy_wasm_mount_crs_data_files() {
-  // @pmFromFile lists are expanded into @pm at build time (generate_rules_catalog.py).
-  // Envoy's V8 runtime does not provide WASI path_open or Emscripten embed FS loaders.
-  (void)modsecurity_proxy_wasm_rules::lookup;
-  return true;
+  // Envoy's wasm runtime does not provide a writable host FS for fopen/mkdir.
+  // Phrase lists stay in the embedded catalog and are served to PmFromFile via
+  // modsecurity_proxy_wasm_resolve_data_file (see ModSecurity patch).
+  return countCrsDataFiles() > 0;
 }
 
 const char* modsecurity_proxy_wasm_rule_ref_path(const char* label) {

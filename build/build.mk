@@ -116,13 +116,16 @@ $(STAMPS_DIR)/pcre2: | $(STAMPS_DIR)/emsdk
 		> $(PCRE2_EM)/lib/pkgconfig/libpcre2-8.pc
 	touch $@
 
-$(STAMPS_DIR)/modsecurity: $(STAMPS_DIR)/pcre2
+$(STAMPS_DIR)/modsecurity: $(STAMPS_DIR)/pcre2 \
+		$(BUILD_DIR)/build/patches/modsecurity-pm-from-file-catalog.patch
 	@mkdir -p $(STAMPS_DIR) $(PREFIX)
 	rm -rf $(MODSEC_SRC)
 	git clone https://github.com/owasp-modsecurity/ModSecurity.git $(MODSEC_SRC)
 	cd $(MODSEC_SRC) && git checkout $(MODSECURITY_SHA)
 	test "$$(git -C $(MODSEC_SRC) rev-parse HEAD)" = "$(MODSECURITY_SHA)"
 	cd $(MODSEC_SRC) && git submodule update --init --recursive
+	# Serve CRS .data phrase lists from the proxy-wasm catalog (Envoy V8 has no MEMFS).
+	cd $(MODSEC_SRC) && patch -p1 < $(BUILD_DIR)/build/patches/modsecurity-pm-from-file-catalog.patch
 	cd $(MODSEC_SRC) && ./build.sh
 	cd $(MODSEC_SRC) && $(EMS_ENV) PKG_CONFIG_PATH=$(PCRE2_EM)/lib/pkgconfig \
 		emconfigure ./configure $(MODSEC_CONFIGURE_FLAGS)
