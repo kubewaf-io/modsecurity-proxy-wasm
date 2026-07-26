@@ -117,6 +117,75 @@ TEST(WafConfig, ParseMetricToggles) {
   EXPECT_FALSE(opts.rule_tags);
 }
 
+TEST(WafConfig, ParseNestedMetricsObject) {
+  const std::string cfg = R"({
+    "metrics": {
+      "enabled": false,
+      "per_rule_id": false,
+      "rule_tags": false,
+      "dual_prefix": false
+    },
+    "directives_map": {"default": ["SecRuleEngine On"]},
+    "default_directives": "default"
+  })";
+  WafMetricOptions opts;
+  ASSERT_TRUE(parseWafMetricOptions(cfg, opts));
+  EXPECT_FALSE(opts.enabled);
+  EXPECT_FALSE(opts.per_rule_id);
+  EXPECT_FALSE(opts.rule_tags);
+  EXPECT_FALSE(opts.dual_prefix);
+}
+
+TEST(WafConfig, ParsePluginOptionsKubeWAF) {
+  const std::string cfg = R"({
+    "mode": "kubewaf",
+    "config_id": "kubewaf/shop/shop-waf",
+    "allow_fallback": true,
+    "metric_labels": {
+      "waf_namespace": "shop",
+      "waf_name": "shop-waf",
+      "engine": "modsecurity"
+    },
+    "metrics": {"enabled": true, "per_rule_id": false},
+    "block": {
+      "message": "blocked by kubeWAF",
+      "add_rule_id_header": true,
+      "rule_id_header": "x-kubewaf-rule-id"
+    },
+    "directives_map": {"default": ["Include @kubewaf-defaults", "SecRuleEngine On"]},
+    "default_directives": "default"
+  })";
+  WafPluginOptions opts;
+  ASSERT_TRUE(parseWafPluginOptions(cfg, opts));
+  EXPECT_EQ(opts.mode, "kubewaf");
+  EXPECT_EQ(opts.config_id, "kubewaf/shop/shop-waf");
+  // kubeWAF identity forces fail-closed even if allow_fallback is true in JSON.
+  EXPECT_FALSE(opts.allow_fallback);
+  EXPECT_FALSE(wafConfigAllowsFallback(cfg));
+  EXPECT_FALSE(opts.metrics.per_rule_id);
+  EXPECT_EQ(opts.block.message, "blocked by kubeWAF");
+  EXPECT_TRUE(opts.block.add_rule_id_header);
+  EXPECT_EQ(opts.block.rule_id_header, "x-kubewaf-rule-id");
+}
+
+TEST(WafConfig, KubeWafDefaultsIncludeExpands) {
+  const std::string cfg = R"({
+    "directives_map": {
+      "default": [
+        "Include @kubewaf-defaults",
+        "SecRuleEngine On"
+      ]
+    },
+    "default_directives": "default"
+  })";
+  std::string rules;
+  std::string error;
+  ASSERT_TRUE(expandWafConfiguration(cfg, rules, error)) << error;
+  EXPECT_NE(rules.find("SecRequestBodyAccess On"), std::string::npos);
+  EXPECT_NE(rules.find("SecResponseBodyAccess On"), std::string::npos);
+  EXPECT_NE(rules.find("SecRuleEngine On"), std::string::npos);
+}
+
 TEST(WafConfig, ApplyConfigurationInvokesLoader) {
   const std::string cfg = "SecRuleEngine DetectionOnly\n";
   struct Ctx {
@@ -135,6 +204,12 @@ TEST(WafConfig, ApplyConfigurationInvokesLoader) {
   ASSERT_TRUE(applyWafConfiguration(cfg, loader, &ctx, error));
   EXPECT_EQ(ctx.chunks, 1);
   EXPECT_EQ(ctx.payload, "SecRuleEngine DetectionOnly");
+}
+
+TEST(WafConfig, BuiltInKubeWafDefaultsNonEmpty) {
+  const char* conf = kubeWafDefaultsConf();
+  ASSERT_NE(conf, nullptr);
+  EXPECT_NE(std::string(conf).find("SecRequestBodyAccess On"), std::string::npos);
 }
 
 }  // namespace

@@ -142,12 +142,14 @@ $(STAMPS_DIR)/crs:
 $(GENERATED_CC) $(GENERATED_H): $(STAMPS_DIR)/crs \
 		$(BUILD_RULES_DIR)/demo-conf.conf \
 		$(BUILD_RULES_DIR)/ftw-config.conf \
+		$(BUILD_RULES_DIR)/kubewaf-defaults.conf \
 		$(BUILD_SCRIPTS_DIR)/generate_rules_catalog.py
 	@mkdir -p $(BUILD_DIR)/src/generated
 	python3 $(BUILD_SCRIPTS_DIR)/generate_rules_catalog.py \
 		--crs $(CRS_DIR) \
 		--demo $(BUILD_RULES_DIR)/demo-conf.conf \
 		--ftw $(BUILD_RULES_DIR)/ftw-config.conf \
+		--kubewaf-defaults $(BUILD_RULES_DIR)/kubewaf-defaults.conf \
 		--out-cc $(GENERATED_CC) \
 		--out-h $(GENERATED_H)
 

@@ -25,8 +25,10 @@ services:
       - info
       - --component-log-level
       - wasm:debug
+      # Short format: free budget under Envoy's ~512-char wasm log line limit so
+      # go-ftw can still see [id "N"] and X-CRS-Test marker values.
       - --log-format
-      - "[%Y-%m-%d %T.%f][%t][%l][%n] [%g:%#] %v"
+      - "[%Y-%m-%d %T.%f][%t][%l][%n] %v"
       - --log-path
       - /home/envoy/logs/envoy.log
     volumes:
@@ -45,6 +47,9 @@ services:
     environment:
       - FTW_CLOUDMODE=${FTW_CLOUDMODE:-false}
       - FTW_INCLUDE=${FTW_INCLUDE:-}
+      - FTW_RATE_LIMIT=${FTW_RATE_LIMIT:-300ms}
+      - FTW_MAX_MARKER_RETRIES=${FTW_MAX_MARKER_RETRIES:-40}
+      - FTW_MARKER_SETTLE=${FTW_MARKER_SETTLE:-5}
     volumes:
       - logs:/home/envoy/logs:ro
       - ./tests.sh:/workspace/tests.sh:ro

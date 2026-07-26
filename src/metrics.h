@@ -4,14 +4,18 @@
 #include <cstdint>
 #include <list>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
 struct WafMetricOptions {
   std::vector<std::pair<std::string, std::string>> labels;
+  bool enabled{true};
   bool per_rule_id{true};
   bool rule_tags{true};
+  // When true, core counters are also emitted under kubewaf_waf.* for product dashboards.
+  bool dual_prefix{true};
 };
 
 class ModSecMetrics {
@@ -30,6 +34,7 @@ class ModSecMetrics {
 
  private:
   void incrementCounter(const std::string& name);
+  void incrementCoreCounter(const std::string& legacy_suffix, const std::string& product_suffix);
   void setGauge(const std::string& name, uint64_t value);
   bool trackDistinct(std::string& name, size_t& distinct_count, size_t max_distinct);
   std::string labelSuffix() const;

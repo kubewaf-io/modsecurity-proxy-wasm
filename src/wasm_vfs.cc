@@ -30,6 +30,10 @@ std::string ruleRefPathImpl(const char* label) {
     ref.append("demo-conf.conf");
     return ref;
   }
+  if (l == "@kubewaf-defaults") {
+    ref.append("kubewaf-defaults.conf");
+    return ref;
+  }
   if (l == "@crs-setup-conf") {
     ref.append("crs-setup.conf");
     return ref;

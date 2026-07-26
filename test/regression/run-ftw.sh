@@ -161,8 +161,13 @@ wait_for_http
 sleep "${FTW_STARTUP_WAIT:-10}"
 prime_waf_from_host
 wait_for_waf_logs
-compose up --abort-on-container-exit --pull missing ftw
+# Use `run --no-deps` so Envoy is not recreated (recreate would wipe primed logs and
+# race go-ftw marker discovery). Propagate the container exit status explicitly.
+echo "==> Running go-ftw"
+set +e
+compose run --rm --no-deps ftw
 exit_code=$?
+set -e
 
 if [[ "$exit_code" -eq 0 ]]; then
   echo "==> CRS go-ftw regression passed"

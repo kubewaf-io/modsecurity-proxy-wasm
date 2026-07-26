@@ -1,11 +1,16 @@
 // modsecurity-proxy-wasm: ModSecurity WASM module for Envoy using proxy-wasm-cpp-sdk
-// Supports loading rules (including CRS via configuration or defaults).
-// Must be compiled with Emscripten for compatibility with Envoy's v8 WASM runtime.
+// Product engine for kubeWAF (also usable standalone). Supports loading rules
+// (including CRS via configuration or defaults). Must be compiled with Emscripten
+// for compatibility with Envoy's v8 WASM runtime.
 
+#include <cstdio>
 #include <string>
 #include <string_view>
 #include <cctype>
 #include <cstdlib>
+#include <sstream>
+#include <utility>
+#include <vector>
 
 #include "proxy_wasm_intrinsics.h"
 #include "metrics.h"
@@ -80,6 +85,7 @@ public:
   ModSecurity* modsec_{nullptr};
   RulesSet* rules_{nullptr};
   ModSecMetrics metrics_;
+  WafPluginOptions plugin_options_;
 
 private:
   bool readPluginConfig(size_t configuration_size, std::string& config);
@@ -110,23 +116,44 @@ private:
   bool response_body_interrupted_{false};
   bool interrupted_{false};
   int64_t last_disruptive_rule_id_{0};
+  std::string request_id_;
+  std::string method_;
+  std::string path_;
+  std::string client_ip_;
   ModSecRootContext* rootContext() { return static_cast<ModSecRootContext*>(root()); }
 
   void activateContext();
   int processIntervention(const char* phase);
   void finalizeResponseBodyPhase();
+  void sendBlockLocalResponse(int status);
   FilterHeadersStatus sendBlockResponse(int status);
   FilterDataStatus sendBlockResponseData(int status);
   FilterTrailersStatus sendBlockResponseTrailers(int status);
   FilterDataStatus sanitizeInterruptedResponseBody(size_t body_buffer_length);
   void appendBufferedRequestBody();
   void appendBufferedResponseBody(size_t& buffer_size);
+  void logStructuredEvent(const char* event, int64_t rule_id, int phase, const char* phase_name,
+                          int severity, bool disruptive, const std::string& msg,
+                          const std::string& tags_csv);
+  static std::string jsonEscape(std::string_view s);
 };
 
 static RegisterContextFactory register_ModSecContext(CONTEXT_FACTORY(ModSecContext),
                                                      ROOT_FACTORY(ModSecRootContext));
 
 static thread_local ModSecContext* g_active_modsec_context = nullptr;
+
+// Emit a compact rule line for go-ftw / operators.
+// Envoy truncates wasm log lines (~512 chars including its own prefix + __FILE__),
+// so put [id "N"] first. Keep a short classic ModSecurity snippet so X-CRS-Test
+// markers (Value: `...`) still appear for go-ftw log synchronization.
+static void logRuleMatchCompact(const RuleMessage& rule_message) {
+  std::string line = "[modsecurity-proxy-wasm][rule] [id \"";
+  line += std::to_string(rule_message.m_rule.m_ruleId);
+  line += "\"] ";
+  line += RuleMessage::log(rule_message).substr(0, 180);
+  LOG_WARN(line);
+}
 
 // Log callback for ModSecurity rule matches
 static void modsecurity_proxy_wasm_log_cb(void* data, const void* ruleMessagev) {
@@ -138,8 +165,10 @@ static void modsecurity_proxy_wasm_log_cb(void* data, const void* ruleMessagev) 
   const RuleMessage* ruleMessage = reinterpret_cast<const RuleMessage*>(ruleMessagev);
   if (g_active_modsec_context != nullptr) {
     g_active_modsec_context->recordRuleMatch(*ruleMessage);
+  } else {
+    // Fallback when no active stream context (configure-time matches are rare).
+    logRuleMatchCompact(*ruleMessage);
   }
-  LOG_WARN(std::string("[modsecurity-proxy-wasm][rule] ") + RuleMessage::log(*ruleMessage).substr(0, 200));
 }
 
 // Default minimal rules (engine on + basic). CRS can be appended via plugin config.
@@ -178,8 +207,31 @@ bool loadRuleChunk(const char* label, const char* data, std::size_t size, void* 
 bool ModSecRootContext::onConfigure(size_t configuration_size) {
   LOG_WARN("[modsecurity-proxy-wasm] onConfigure size=" + std::to_string(configuration_size));
 
+  std::string config;
+  if (!readPluginConfig(configuration_size, config)) {
+    LOG_ERROR("[modsecurity-proxy-wasm] Failed to read plugin configuration");
+    return false;
+  }
+
+  if (!parseWafPluginOptions(config, plugin_options_)) {
+    LOG_ERROR("[modsecurity-proxy-wasm] Failed to parse plugin configuration options");
+    return false;
+  }
+  metrics_.configure(plugin_options_.metrics);
+
+  std::string connector = "kubeWAF/modsecurity-proxy-wasm";
+  if (!plugin_options_.config_id.empty()) {
+    connector.append(" (");
+    connector.append(plugin_options_.config_id);
+    connector.append(")");
+  } else if (plugin_options_.mode == "kubewaf") {
+    connector.append(" (mode=kubewaf)");
+  } else {
+    connector = "modsecurity-proxy-wasm/1.0 (Envoy proxy-wasm-cpp-sdk)";
+  }
+
   modsec_ = new ModSecurity();
-  modsec_->setConnectorInformation("modsecurity-proxy-wasm/1.0 (Envoy proxy-wasm-cpp-sdk)");
+  modsec_->setConnectorInformation(connector);
   modsec_->setServerLogCb(modsecurity_proxy_wasm_log_cb, modsecurity::RuleMessageLogProperty);
 
   rules_ = new RulesSet();
@@ -188,22 +240,9 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
     LOG_WARN("[modsecurity-proxy-wasm] CRS .data MEMFS mount failed (non-fatal when @pmFromFile was inlined at build time)");
   }
 
-  std::string config;
-  if (!readPluginConfig(configuration_size, config)) {
-    LOG_ERROR("[modsecurity-proxy-wasm] Failed to read plugin configuration");
-    return false;
-  }
-
-  WafMetricOptions metric_options;
-  if (!parseWafMetricOptions(config, metric_options)) {
-    LOG_ERROR("[modsecurity-proxy-wasm] Failed to parse metric_labels in plugin configuration");
-    return false;
-  }
-  metrics_.configure(metric_options);
-
   std::string err;
   if (!applyWafConfiguration(config, loadRuleChunk, rules_, err)) {
-    if (!wafConfigAllowsFallback(config)) {
+    if (!plugin_options_.allow_fallback || !wafConfigAllowsFallback(config)) {
       LOG_ERROR(std::string("[modsecurity-proxy-wasm] WAF config load failed (fail-closed): ") + err);
       return false;
     }
@@ -217,8 +256,19 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
     metrics_.countConfigureFallbackRules();
     return true;
   }
-  LOG_WARN("[modsecurity-proxy-wasm] CRS catalog loaded (directives_map)");
-  LOG_WARN("[modsecurity-proxy-wasm] WAF configuration applied (JSON directives_map + embedded OWASP CRS)");
+
+  std::ostringstream summary;
+  summary << "[modsecurity-proxy-wasm] WAF configuration applied";
+  if (!plugin_options_.config_id.empty()) {
+    summary << " config_id=" << plugin_options_.config_id;
+  }
+  if (!plugin_options_.mode.empty()) {
+    summary << " mode=" << plugin_options_.mode;
+  }
+  summary << " metric_labels=" << plugin_options_.metrics.labels.size()
+          << " per_rule_id=" << (plugin_options_.metrics.per_rule_id ? "true" : "false")
+          << " stats=" << (plugin_options_.metrics.enabled ? "on" : "off");
+  LOG_WARN(summary.str());
   return true;
 }
 
@@ -243,10 +293,103 @@ void ModSecContext::onCreate() {
   response_body_interrupted_ = false;
   interrupted_ = false;
   last_disruptive_rule_id_ = 0;
+  request_id_.clear();
+  method_.clear();
+  path_.clear();
+  client_ip_.clear();
 }
 
 void ModSecContext::activateContext() {
   g_active_modsec_context = this;
+}
+
+std::string ModSecContext::jsonEscape(std::string_view s) {
+  std::string out;
+  out.reserve(s.size() + 8);
+  for (char c : s) {
+    switch (c) {
+      case '"':
+        out += "\\\"";
+        break;
+      case '\\':
+        out += "\\\\";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
+      default:
+        if (static_cast<unsigned char>(c) < 0x20) {
+          char buf[8];
+          std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
+          out += buf;
+        } else {
+          out.push_back(c);
+        }
+    }
+  }
+  return out;
+}
+
+void ModSecContext::logStructuredEvent(const char* event, int64_t rule_id, int phase,
+                                       const char* phase_name, int severity, bool disruptive,
+                                       const std::string& msg, const std::string& tags_csv) {
+  auto* root = rootContext();
+  std::ostringstream js;
+  js << "{\"event\":\"" << event << "\""
+     << ",\"engine\":\"modsecurity\"";
+  if (!root->plugin_options_.config_id.empty()) {
+    js << ",\"config_id\":\"" << jsonEscape(root->plugin_options_.config_id) << "\"";
+  }
+  if (!root->plugin_options_.mode.empty()) {
+    js << ",\"mode\":\"" << jsonEscape(root->plugin_options_.mode) << "\"";
+  }
+  for (const auto& kv : root->plugin_options_.metrics.labels) {
+    if (kv.first == "waf_namespace" || kv.first == "waf_name" || kv.first == "engine") {
+      js << ",\"" << jsonEscape(kv.first) << "\":\"" << jsonEscape(kv.second) << "\"";
+    }
+  }
+  if (!request_id_.empty()) {
+    js << ",\"request_id\":\"" << jsonEscape(request_id_) << "\"";
+  }
+  if (!method_.empty()) {
+    js << ",\"method\":\"" << jsonEscape(method_) << "\"";
+  }
+  if (!path_.empty()) {
+    // Truncate path for log volume / PII risk.
+    std::string p = path_.substr(0, 256);
+    js << ",\"path\":\"" << jsonEscape(p) << "\"";
+  }
+  if (!client_ip_.empty()) {
+    js << ",\"client_ip\":\"" << jsonEscape(client_ip_) << "\"";
+  }
+  if (rule_id > 0) {
+    // "id" is recognized by go-ftw's JSON log parser; keep rule_id for kubeWAF consumers.
+    js << ",\"id\":" << rule_id << ",\"rule_id\":" << rule_id;
+  }
+  if (phase >= 0) {
+    js << ",\"phase\":" << phase;
+  }
+  if (phase_name != nullptr && phase_name[0] != '\0') {
+    js << ",\"phase_name\":\"" << jsonEscape(phase_name) << "\"";
+  }
+  if (severity >= 0) {
+    js << ",\"severity\":" << severity;
+  }
+  js << ",\"disruptive\":" << (disruptive ? "true" : "false");
+  if (!msg.empty()) {
+    js << ",\"msg\":\"" << jsonEscape(msg.substr(0, 256)) << "\"";
+  }
+  if (!tags_csv.empty()) {
+    js << ",\"tags\":\"" << jsonEscape(tags_csv.substr(0, 256)) << "\"";
+  }
+  js << "}";
+  LOG_WARN(std::string("[kubewaf][security] ") + js.str());
 }
 
 void ModSecContext::recordRuleMatch(const RuleMessage& rule_message) {
@@ -256,6 +399,22 @@ void ModSecContext::recordRuleMatch(const RuleMessage& rule_message) {
   rootContext()->metrics_.countRuleMatch(rule_message.getPhase(), rule_message.m_severity,
                                          rule_message.m_isDisruptive, rule_message.m_rule.m_ruleId,
                                          rule_message.m_tags);
+
+  // go-ftw requires rule IDs in the log; emit compact [id "N"] before structured JSON.
+  logRuleMatchCompact(rule_message);
+
+  std::string tags_csv;
+  for (const auto& t : rule_message.m_tags) {
+    if (!tags_csv.empty()) tags_csv.push_back(',');
+    tags_csv.append(t);
+    if (tags_csv.size() > 200) break;
+  }
+  std::string msg;
+  if (!rule_message.m_message.empty()) {
+    msg = rule_message.m_message;
+  }
+  logStructuredEvent("rule_match", rule_message.m_rule.m_ruleId, rule_message.getPhase(), nullptr,
+                     rule_message.m_severity, rule_message.m_isDisruptive, msg, tags_csv);
 }
 
 int ModSecContext::processIntervention(const char* phase) {
@@ -273,31 +432,48 @@ int ModSecContext::processIntervention(const char* phase) {
   rootContext()->metrics_.countTxInterruption(phase, last_disruptive_rule_id_);
 
   int status = intervention.status;
+  std::string intervention_msg;
   if (intervention.log != nullptr) {
-    LOG_WARN(std::string("[modsecurity-proxy-wasm][intervention] ") + intervention.log);
+    intervention_msg = intervention.log;
     free(intervention.log);
   }
   if (intervention.url != nullptr) {
     free(intervention.url);
   }
+
+  const auto& block = rootContext()->plugin_options_.block;
+  if (block.status >= 100 && block.status <= 599) {
+    status = block.status;
+  }
+  logStructuredEvent("tx_interrupt", last_disruptive_rule_id_, -1, phase, -1, true, intervention_msg,
+                     "");
   return status;
 }
 
-FilterHeadersStatus ModSecContext::sendBlockResponse(int status) {
+void ModSecContext::sendBlockLocalResponse(int status) {
   if (status < 100 || status > 599) status = 403;
-  sendLocalResponse(static_cast<uint32_t>(status), "blocked by modsecurity", "", {});
+  const auto& block = rootContext()->plugin_options_.block;
+  std::string details = block.message.empty() ? "blocked by kubeWAF" : block.message;
+  std::vector<std::pair<std::string, std::string>> extra_headers;
+  extra_headers.emplace_back("x-kubewaf-blocked", "1");
+  if (block.add_rule_id_header && last_disruptive_rule_id_ > 0 && !block.rule_id_header.empty()) {
+    extra_headers.emplace_back(block.rule_id_header, std::to_string(last_disruptive_rule_id_));
+  }
+  sendLocalResponse(static_cast<uint32_t>(status), details, "", extra_headers);
+}
+
+FilterHeadersStatus ModSecContext::sendBlockResponse(int status) {
+  sendBlockLocalResponse(status);
   return FilterHeadersStatus::StopIteration;
 }
 
 FilterDataStatus ModSecContext::sendBlockResponseData(int status) {
-  if (status < 100 || status > 599) status = 403;
-  sendLocalResponse(static_cast<uint32_t>(status), "blocked by modsecurity", "", {});
+  sendBlockLocalResponse(status);
   return FilterDataStatus::StopIterationNoBuffer;
 }
 
 FilterTrailersStatus ModSecContext::sendBlockResponseTrailers(int status) {
-  if (status < 100 || status > 599) status = 403;
-  sendLocalResponse(static_cast<uint32_t>(status), "blocked by modsecurity", "", {});
+  sendBlockLocalResponse(status);
   return FilterTrailersStatus::StopIteration;
 }
 
@@ -381,6 +557,7 @@ FilterHeadersStatus ModSecContext::onRequestHeaders(uint32_t, bool end_of_stream
   getValue({"source", "port"}, &client_port);
   getValue({"destination", "address"}, &server_ip);
   getValue({"destination", "port"}, &server_port);
+  client_ip_ = client_ip;
 
   std::string path = "/";
   std::string method = "GET";
@@ -393,6 +570,20 @@ FilterHeadersStatus ModSecContext::onRequestHeaders(uint32_t, bool end_of_stream
     method = h->toString();
   } else {
     getValue({"request", "headers", ":method"}, &method);
+  }
+  path_ = path;
+  method_ = method;
+
+  // Correlate with Envoy / client request id when present.
+  if (auto h = getRequestHeader("x-request-id")) {
+    request_id_ = h->toString();
+  } else if (auto h = getRequestHeader("x-envoy-request-id")) {
+    request_id_ = h->toString();
+  } else {
+    getValue({"request", "id"}, &request_id_);
+  }
+  if (request_id_.empty()) {
+    request_id_ = tx_id;
   }
 
   transaction_->processConnection(client_ip.c_str(), static_cast<int>(client_port),

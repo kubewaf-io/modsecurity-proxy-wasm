@@ -36,24 +36,49 @@ http_filters:
         code: { local: { filename: /etc/modsecurity-proxy-wasm.wasm } }
 ```
 
-**WAF config** — JSON `directives_map` / `default_directives` profiles:
+**WAF config** — JSON `directives_map` / `default_directives` profiles.
+When driven by **kubeWAF**, the operator also sets `mode`, `config_id`, identity
+`metric_labels`, nested `metrics`, and `block` (see
+[`schemas/waf-plugin-config.json`](../schemas/waf-plugin-config.json)).
 
 ```json
 {
+  "mode": "kubewaf",
+  "config_id": "kubewaf/shop/shop-waf",
+  "allow_fallback": false,
   "directives_map": {
-    "default": ["SecRuleEngine On", "SecRequestBodyAccess On"]
+    "default": [
+      "Include @kubewaf-defaults",
+      "SecRuleEngine On",
+      "SecRequestBodyAccess On"
+    ]
   },
-  "default_directives": "default"
+  "default_directives": "default",
+  "metric_labels": {
+    "waf_namespace": "shop",
+    "waf_name": "shop-waf",
+    "engine": "modsecurity",
+    "owner": "modsecurity-proxy-wasm"
+  },
+  "metrics": { "enabled": true, "per_rule_id": true, "rule_tags": true },
+  "block": { "message": "blocked by kubeWAF" }
 }
 ```
 
 **Embedded CRS** — OWASP CRS v4.27.0 and phrase lists are baked in at build; load with virtual includes (no runtime filesystem):
 
+| Virtual include | Purpose |
+|-----------------|---------|
+| `@kubewaf-defaults` | Production body access / tmp dirs (kubeWAF baseline) |
+| `@demo-conf` | Standalone demo overlay |
+| `@crs-setup-conf` | CRS setup |
+| `@owasp_crs/*.conf` | Full CRS rules |
+
 ```json
 {
   "directives_map": {
     "crs": [
-      "Include @demo-conf",
+      "Include @kubewaf-defaults",
       "SecRuleEngine On",
       "Include @crs-setup-conf",
       "Include @owasp_crs/*.conf"
@@ -63,14 +88,16 @@ http_filters:
 }
 ```
 
-**Metrics** — Prometheus counters via `metric_labels` and Envoy `stats_config` (see `test/fixtures/envoy.yaml`):
-
-```json
-{ "metric_labels": { "owner": "modsecurity-proxy-wasm", "identifier": "prod" } }
-```
+**Metrics** — Envoy stats with name-embedded labels (`metric_labels`). Core series are dual-emitted as `modsecurity_proxy_wasm.*` and `kubewaf_waf.*`. All counters include the label suffix (including `tx.total` / `tx.allowed`).
 
 ```bash
-curl -s http://127.0.0.1:9901/stats/prometheus | grep modsecurity_proxy_wasm.tx
+curl -s http://127.0.0.1:9901/stats/prometheus | grep -E 'modsecurity_proxy_wasm|kubewaf_waf'
+```
+
+**Security logs** — rule matches and blocks emit one JSON line each:
+
+```text
+[kubewaf][security] {"event":"tx_interrupt","config_id":"kubewaf/shop/shop-waf",...}
 ```
 
 **OCI artifact** — wasm, default WAF JSON, and an Envoy example in one image:

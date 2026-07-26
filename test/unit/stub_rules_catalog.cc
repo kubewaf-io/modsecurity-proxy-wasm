@@ -11,8 +11,16 @@ constexpr char kDemoConfData[] =
     "SecDataDir /tmp/modsec\n"
     "SecRuleEngine On\n";
 
+constexpr char kKubeWafDefaultsData[] =
+    "SecTmpDir /modsecurity-proxy-wasm-rules\n"
+    "SecDataDir /modsecurity-proxy-wasm-rules\n"
+    "SecRequestBodyAccess On\n"
+    "SecResponseBodyAccess On\n"
+    "SecAuditEngine Off\n";
+
 constexpr RuleAsset kCatalog[] = {
     {"@demo-conf", kDemoConfData, sizeof(kDemoConfData) - 1},
+    {"@kubewaf-defaults", kKubeWafDefaultsData, sizeof(kKubeWafDefaultsData) - 1},
 };
 
 constexpr size_t kCatalogSize = sizeof(kCatalog) / sizeof(kCatalog[0]);

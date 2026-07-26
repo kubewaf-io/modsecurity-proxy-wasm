@@ -45,14 +45,29 @@ def _load_pm_words(data_path: Path) -> list[str]:
     return words
 
 
+# Keep expanded @pm operators under a safe size for ModSecurity/V8 rule load.
+# Large phrase lists (e.g. php-errors.data) can abort onConfigure if inlined whole.
+_MAX_PM_INLINE_CHARS = 12_000
+
+
 def _expand_pm_from_file(data_name: str, rules_dir: Path) -> str:
+    # Filename only — never include SecRule quoting in the match/replacement.
+    data_name = data_name.strip().strip("\"'")
+    # Skip comment prose that is not a real @pmFromFile directive.
+    if not data_name.endswith(".data"):
+        return f"@pmFromFile {data_name}"
     path = rules_dir / data_name
     if not path.is_file():
         return f"@rx ^$  # wasm-missing-data:{data_name}"
     words = _load_pm_words(path)
     if not words:
         return "@rx ^$"
-    return "@pm " + " ".join(words)
+    # Escape for use inside a double-quoted SecRule operator string.
+    escaped = [w.replace("\\", "\\\\").replace('"', '\\"') for w in words]
+    joined = " ".join(escaped)
+    if len(joined) > _MAX_PM_INLINE_CHARS:
+        return f"@rx ^$  # wasm-pm-too-large:{data_name}:{len(joined)}"
+    return "@pm " + joined
 
 
 def wasm_safe_rule_conf(conf: str, rules_dir: Path) -> str:
@@ -62,9 +77,16 @@ def wasm_safe_rule_conf(conf: str, rules_dir: Path) -> str:
         if "@rxFromFile" in line:
             out.append("# wasm-disabled (no filesystem): " + line)
             continue
+        # Only rewrite real directives, not comment prose about @pmFromFile.
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            out.append(line)
+            continue
         if "@pmFromFile" in line:
+            # Do NOT consume the closing SecRule quote after the filename.
+            # e.g. "@pmFromFile foo.data"  →  "@pm word1 word2"
             line = re.sub(
-                r"@pmFromFile\s+(\S+)",
+                r"@pmFromFile\s+([^\"\s]+)",
                 lambda m: _expand_pm_from_file(m.group(1), rules_dir),
                 line,
             )
@@ -185,6 +207,13 @@ def main() -> int:
     ap.add_argument("--crs", type=Path, required=True, help="coreruleset checkout")
     ap.add_argument("--demo", type=Path, required=True, help="demo-conf.conf")
     ap.add_argument("--ftw", type=Path, required=True, help="ftw-config.conf")
+    ap.add_argument(
+        "--kubewaf-defaults",
+        type=Path,
+        required=False,
+        default=None,
+        help="kubewaf-defaults.conf (production baseline for kubeWAF)",
+    )
     ap.add_argument("--out-cc", type=Path, default=Path("src/generated/rules_catalog.cc"))
     ap.add_argument("--out-h", type=Path, default=Path("src/generated/rules_catalog.h"))
     args = ap.parse_args()
@@ -203,6 +232,13 @@ def main() -> int:
     assets: list[tuple[str, str]] = []
     assets.append(("@demo-conf", args.demo.read_text(encoding="utf-8", errors="replace")))
     assets.append(("@ftw-conf", args.ftw.read_text(encoding="utf-8", errors="replace")))
+    kubewaf_defaults = args.kubewaf_defaults
+    if kubewaf_defaults is None:
+        kubewaf_defaults = args.demo.parent / "kubewaf-defaults.conf"
+    if kubewaf_defaults.is_file():
+        assets.append(
+            ("@kubewaf-defaults", kubewaf_defaults.read_text(encoding="utf-8", errors="replace"))
+        )
     assets.append(
         (
             "@crs-setup-conf",

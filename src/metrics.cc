@@ -13,7 +13,9 @@ void ModSecMetrics::configure(const WafMetricOptions& options) {
   tx_count_ = 0;
   distinct_rule_metrics_ = 0;
   distinct_tag_metrics_ = 0;
-  recordWasmMemory();
+  if (options_.enabled) {
+    recordWasmMemory();
+  }
 }
 
 std::string ModSecMetrics::labelSuffix() const {
@@ -57,6 +59,10 @@ bool ModSecMetrics::isInterestingRuleTag(std::string_view tag) {
   if (tag.rfind("paranoia-level", 0) == 0) {
     return true;
   }
+  // kubeWAF custom tags (e.g. kubewaf/app, kubewaf/team).
+  if (tag.rfind("kubewaf", 0) == 0 || tag.rfind("kubewaf/", 0) == 0) {
+    return true;
+  }
   return false;
 }
 
@@ -77,6 +83,9 @@ std::string ModSecMetrics::sanitizeTagForMetric(std::string_view tag) {
 }
 
 void ModSecMetrics::incrementCounter(const std::string& name) {
+  if (!options_.enabled) {
+    return;
+  }
   auto it = metric_ids_.find(name);
   if (it == metric_ids_.end()) {
     uint32_t id = 0;
@@ -89,7 +98,22 @@ void ModSecMetrics::incrementCounter(const std::string& name) {
   incrementMetric(it->second, 1);
 }
 
+void ModSecMetrics::incrementCoreCounter(const std::string& legacy_suffix,
+                                         const std::string& product_suffix) {
+  if (!options_.enabled) {
+    return;
+  }
+  const std::string suffix = labelSuffix();
+  incrementCounter(std::string("modsecurity_proxy_wasm.") + legacy_suffix + suffix);
+  if (options_.dual_prefix) {
+    incrementCounter(std::string("kubewaf_waf.") + product_suffix + suffix);
+  }
+}
+
 void ModSecMetrics::setGauge(const std::string& name, uint64_t value) {
+  if (!options_.enabled) {
+    return;
+  }
   auto it = metric_ids_.find(name);
   if (it == metric_ids_.end()) {
     uint32_t id = 0;
@@ -103,8 +127,15 @@ void ModSecMetrics::setGauge(const std::string& name, uint64_t value) {
 }
 
 void ModSecMetrics::recordWasmMemory() {
+  if (!options_.enabled) {
+    return;
+  }
   const uint64_t heap_bytes = static_cast<uint64_t>(emscripten_get_heap_size());
-  setGauge("modsecurity_proxy_wasm.memory.wasm_heap_bytes", heap_bytes);
+  const std::string suffix = labelSuffix();
+  setGauge(std::string("modsecurity_proxy_wasm.memory.wasm_heap_bytes") + suffix, heap_bytes);
+  if (options_.dual_prefix) {
+    setGauge(std::string("kubewaf_waf.memory.wasm_heap_bytes") + suffix, heap_bytes);
+  }
 }
 
 bool ModSecMetrics::trackDistinct(std::string& name, size_t& distinct_count, size_t max_distinct) {
@@ -119,7 +150,7 @@ bool ModSecMetrics::trackDistinct(std::string& name, size_t& distinct_count, siz
 }
 
 void ModSecMetrics::countTxTotal() {
-  incrementCounter("modsecurity_proxy_wasm.tx.total");
+  incrementCoreCounter("tx.total", "tx.total");
   ++tx_count_;
   if ((tx_count_ % 100) == 0) {
     recordWasmMemory();
@@ -127,46 +158,69 @@ void ModSecMetrics::countTxTotal() {
 }
 
 void ModSecMetrics::countTxAllowed() {
-  incrementCounter("modsecurity_proxy_wasm.tx.allowed");
+  incrementCoreCounter("tx.allowed", "tx.allowed");
 }
 
 void ModSecMetrics::countTxInterruption(const char* phase, int64_t rule_id) {
+  if (!options_.enabled) {
+    return;
+  }
   if (phase == nullptr || phase[0] == '\0') {
     phase = "unknown";
   }
 
-  incrementCounter(std::string("modsecurity_proxy_wasm.tx.interruptions_phase=") + phase + labelSuffix());
+  const std::string suffix = labelSuffix();
+  incrementCounter(std::string("modsecurity_proxy_wasm.tx.interruptions_phase=") + phase + suffix);
+  if (options_.dual_prefix) {
+    incrementCounter(std::string("kubewaf_waf.tx.interruptions_phase=") + phase + suffix);
+  }
 
   if (!options_.per_rule_id || rule_id <= 0) {
     return;
   }
 
-  std::string name = std::string("modsecurity_proxy_wasm.tx.interruptions_ruleid=") + std::to_string(rule_id) +
-                     "_phase=" + phase + labelSuffix();
+  std::string name = std::string("modsecurity_proxy_wasm.tx.interruptions_ruleid=") +
+                     std::to_string(rule_id) + "_phase=" + phase + suffix;
   if (!trackDistinct(name, distinct_rule_metrics_, kMaxDistinctRuleMetrics)) {
     return;
   }
   incrementCounter(name);
+  if (options_.dual_prefix) {
+    std::string product = std::string("kubewaf_waf.tx.interruptions_ruleid=") + std::to_string(rule_id) +
+                          "_phase=" + phase + suffix;
+    if (trackDistinct(product, distinct_rule_metrics_, kMaxDistinctRuleMetrics)) {
+      incrementCounter(product);
+    }
+  }
 }
 
 void ModSecMetrics::countRuleMatch(int rule_phase, int severity, bool disruptive, int64_t rule_id,
                                    const std::list<std::string>& tags) {
+  if (!options_.enabled) {
+    return;
+  }
   const char* phase = phaseNameFromRule(rule_phase);
   const std::string suffix = labelSuffix();
 
-  incrementCounter("modsecurity_proxy_wasm.rule.matches");
+  incrementCounter(std::string("modsecurity_proxy_wasm.rule.matches") + suffix);
+  if (options_.dual_prefix) {
+    incrementCounter(std::string("kubewaf_waf.rule.matches") + suffix);
+  }
   incrementCounter(std::string("modsecurity_proxy_wasm.rule.matches_phase=") + phase + "_severity=" +
                    std::to_string(severity) + suffix);
 
   if (disruptive) {
-    incrementCounter("modsecurity_proxy_wasm.rule.matches_disruptive");
+    incrementCounter(std::string("modsecurity_proxy_wasm.rule.matches_disruptive") + suffix);
+    if (options_.dual_prefix) {
+      incrementCounter(std::string("kubewaf_waf.rule.matches_disruptive") + suffix);
+    }
     incrementCounter(std::string("modsecurity_proxy_wasm.rule.matches_disruptive_phase=") + phase +
                      "_severity=" + std::to_string(severity) + suffix);
   }
 
   if (options_.per_rule_id && rule_id > 0) {
-    std::string rule_name = std::string("modsecurity_proxy_wasm.rule.matches_ruleid=") + std::to_string(rule_id) +
-                           "_phase=" + phase + suffix;
+    std::string rule_name = std::string("modsecurity_proxy_wasm.rule.matches_ruleid=") +
+                            std::to_string(rule_id) + "_phase=" + phase + suffix;
     if (trackDistinct(rule_name, distinct_rule_metrics_, kMaxDistinctRuleMetrics)) {
       incrementCounter(rule_name);
     }
@@ -180,8 +234,8 @@ void ModSecMetrics::countRuleMatch(int rule_phase, int severity, bool disruptive
     if (!isInterestingRuleTag(tag)) {
       continue;
     }
-    std::string tag_name = std::string("modsecurity_proxy_wasm.rule.matches_tag=") + sanitizeTagForMetric(tag) +
-                           "_phase=" + phase + suffix;
+    std::string tag_name = std::string("modsecurity_proxy_wasm.rule.matches_tag=") +
+                           sanitizeTagForMetric(tag) + "_phase=" + phase + suffix;
     if (!trackDistinct(tag_name, distinct_tag_metrics_, kMaxDistinctTagMetrics)) {
       continue;
     }
@@ -190,9 +244,13 @@ void ModSecMetrics::countRuleMatch(int rule_phase, int severity, bool disruptive
 }
 
 void ModSecMetrics::countResponseBodySanitized() {
-  incrementCounter("modsecurity_proxy_wasm.response_body.sanitized");
+  incrementCoreCounter("response_body.sanitized", "response_body.sanitized");
 }
 
 void ModSecMetrics::countConfigureFallbackRules() {
-  incrementCounter("modsecurity_proxy_wasm.configure.fallback_rules");
+  // Fallback is a configure-time event; always emit even if runtime stats disabled later.
+  const bool was = options_.enabled;
+  options_.enabled = true;
+  incrementCoreCounter("configure.fallback_rules", "configure.fallback_rules");
+  options_.enabled = was;
 }
