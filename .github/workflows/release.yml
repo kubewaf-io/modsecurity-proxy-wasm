@@ -81,6 +81,10 @@ jobs:
           sudo apt-get install -y git curl unzip python3 python3-matplotlib
 
       - name: Run performance benchmarks and render overlay chart
+        env:
+          # fetch-release-wasm.sh needs this for private-repo previous-release assets
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: make test-perf-release ENVOY_IMAGE=envoyproxy/envoy:v1.38-latest
 
       - name: Verify perf charts
