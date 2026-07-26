@@ -7,6 +7,10 @@
 #
 # Writes run dirs under test/perf/results/ tagged with wasm-release-tag.txt and
 # summary metadata in test/perf/results/release-compare.json.
+#
+# Previous tag is the next-older v* tag by version sort (never a newer tag).
+# If that release has no wasm asset (404 / missing), walks further back; if none
+# can be downloaded, skips the compare with a warning (exit 0).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,20 +32,45 @@ if [[ -z "$REPO" ]]; then
 fi
 REPO="${REPO%.git}"
 
-resolve_previous_tag() {
+# Print candidate previous tags, newest-first (version sort).
+# Prefer the next-older tag after CURRENT; never a newer tag.
+list_previous_candidates() {
   if [[ -n "$PREVIOUS_TAG" ]]; then
+    printf '%s\n' "$PREVIOUS_TAG"
     return 0
   fi
-  if [[ -n "$CURRENT_TAG" ]]; then
-    mapfile -t tags < <(git -C "$ROOT_DIR" tag -l 'v*' --sort=-v:refname)
-    for tag in "${tags[@]}"; do
-      if [[ "$tag" != "$CURRENT_TAG" ]]; then
-        PREVIOUS_TAG="$tag"
-        return 0
-      fi
-    done
+  if [[ -z "$CURRENT_TAG" ]]; then
+    return 1
   fi
-  return 1
+
+  local tag found_current=0 any=0
+  mapfile -t tags < <(git -C "$ROOT_DIR" tag -l 'v*' --sort=-v:refname)
+  for tag in "${tags[@]}"; do
+    if [[ "$found_current" -eq 1 ]]; then
+      printf '%s\n' "$tag"
+      any=1
+      continue
+    fi
+    if [[ "$tag" == "$CURRENT_TAG" ]]; then
+      found_current=1
+    fi
+  done
+
+  if [[ "$found_current" -eq 1 ]]; then
+    [[ "$any" -eq 1 ]]
+    return
+  fi
+
+  # CURRENT not present in local tags: emit every tag that sorts strictly older.
+  for tag in "${tags[@]}"; do
+    # sort -V: if tag sorts before CURRENT, it is older.
+    if [[ "$tag" != "$CURRENT_TAG" ]] \
+        && [[ "$(printf '%s\n%s\n' "$tag" "$CURRENT_TAG" | sort -V | head -1)" == "$tag" ]]; then
+      printf '%s\n' "$tag"
+      any=1
+    fi
+  done
+  [[ "$any" -eq 1 ]]
 }
 
 if [[ -z "$CURRENT_TAG" ]]; then
@@ -52,18 +81,43 @@ fi
   exit 2
 }
 
-resolve_previous_tag
-if [[ -z "$PREVIOUS_TAG" ]]; then
+mapfile -t PREV_CANDIDATES < <(list_previous_candidates || true)
+if [[ ${#PREV_CANDIDATES[@]} -eq 0 || -z "${PREV_CANDIDATES[0]:-}" ]]; then
   echo "WARN: no previous release tag — skipping release compare (first release?)" >&2
   exit 0
 fi
 
-echo "==> Release perf compare: ${PREVIOUS_TAG} -> ${CURRENT_TAG} (${REPO})"
-
 chmod +x "$SCRIPT_DIR/fetch-release-wasm.sh" "$SCRIPT_DIR/run-k6.sh" \
   "$SCRIPT_DIR/collect-stats.sh"
 
-PREV_WASM="$("$SCRIPT_DIR/fetch-release-wasm.sh" "$PREVIOUS_TAG")"
+# Try candidates newest-first until a previous wasm asset downloads successfully.
+PREV_WASM=""
+resolved_previous=""
+for candidate in "${PREV_CANDIDATES[@]}"; do
+  echo "==> Trying previous release wasm: ${candidate} (current ${CURRENT_TAG}, ${REPO})"
+  fetch_status=0
+  candidate_path="$("$SCRIPT_DIR/fetch-release-wasm.sh" "$candidate")" || fetch_status=$?
+  if [[ "$fetch_status" -eq 0 && -n "$candidate_path" && -f "$candidate_path" ]]; then
+    PREV_WASM="$candidate_path"
+    resolved_previous="$candidate"
+    break
+  fi
+  if [[ "$fetch_status" -eq 3 ]]; then
+    echo "WARN: ${candidate} has no downloadable wasm (missing release/asset); trying older tag if any" >&2
+  else
+    echo "WARN: could not fetch wasm for ${candidate} (exit ${fetch_status}); trying older tag if any" >&2
+  fi
+done
+
+if [[ -z "$PREV_WASM" || -z "$resolved_previous" ]]; then
+  echo "WARN: no previous release wasm available — skipping release compare" >&2
+  echo "      tried: ${PREV_CANDIDATES[*]}" >&2
+  exit 0
+fi
+
+PREVIOUS_TAG="$resolved_previous"
+echo "==> Release perf compare: ${PREVIOUS_TAG} -> ${CURRENT_TAG} (${REPO})"
+
 CURR_WASM="${PERF_WASM_CURRENT:-$ROOT_DIR/dist/modsecurity-proxy-wasm.wasm}"
 
 if [[ ! -f "$CURR_WASM" ]]; then

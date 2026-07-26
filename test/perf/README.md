@@ -130,7 +130,7 @@ make test-perf-release         # smoke perf + release compare + chart bundle
 
 Each run directory also gets `memory-snapshot.json` (peak container RSS + `modsecurity_proxy_wasm.memory.wasm_heap_bytes` from the plugin gauge).
 
-Release compare downloads the previous tag’s `modsecurity-proxy-wasm.wasm` from GitHub Releases and benchmarks `benign-get` + `benign-post-1k` against the current build.
+Release compare downloads the **previous** (next-older) tag’s `modsecurity-proxy-wasm.wasm` from GitHub Releases and benchmarks `benign-get` + `benign-post-1k` against the current build. It never treats a newer tag as the baseline (important when a later tag already exists on the clone). If that release or wasm asset is missing (HTTP 404), it walks further back through older `v*` tags; if none can be downloaded, the compare is **skipped with a warning** (exit 0) so release publish is not blocked. For private repos, set `GITHUB_TOKEN` (or `GH_TOKEN`); CI already passes `secrets.GITHUB_TOKEN` into the release publish job.
 
 **Release publish:** pushing a `v*` tag runs [`.github/workflows/release.yml`](../../.github/workflows/release.yml), which:
 
