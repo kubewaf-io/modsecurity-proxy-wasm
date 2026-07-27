@@ -26,7 +26,7 @@ services:
       - --component-log-level
       - wasm:debug
       # Short format: free budget under Envoy's ~512-char wasm log line limit so
-      # go-ftw can still see [id "N"] and X-CRS-Test marker values.
+      # go-ftw can still see JSON "id":N and X-CRS-Test marker values in msg/data.
       - --log-format
       - "[%Y-%m-%d %T.%f][%t][%l][%n] %v"
       - --log-path

@@ -2,6 +2,8 @@
 
 ModSecurity [Proxy-Wasm](https://github.com/proxy-wasm/spec) filter for Envoy (`envoy.wasm.runtime.v8`) with embedded **OWASP CRS v4.27.0**.
 
+**Full documentation (kubeWAF docs site):** [modsecurity-proxy-wasm](https://kubewaf.io/docs/modsecurity-proxy-wasm) · [pow-proxy-wasm](https://kubewaf.io/docs/pow-proxy-wasm) · [operator](https://kubewaf.io/docs/operator)
+
 ## Quick start
 
 ```bash
@@ -94,10 +96,12 @@ When driven by **kubeWAF**, the operator also sets `mode`, `config_id`, identity
 curl -s http://127.0.0.1:9901/stats/prometheus | grep -E 'modsecurity_proxy_wasm|kubewaf_waf'
 ```
 
-**Security logs** — rule matches and blocks emit one JSON line each:
+**Security logs** — every plugin log line is a single JSON object (no text prefix). Lifecycle events use `"event":"version"|"configure_start"|"config_applied"|…`; security events use `"event":"rule_match"` / `"tx_interrupt"`. Rule IDs are emitted as `"id"` (go-ftw JSON parser) and `"rule_id"`.
 
 ```text
-[kubewaf][security] {"event":"tx_interrupt","config_id":"kubewaf/shop/shop-waf",...}
+{"component":"modsecurity-proxy-wasm","event":"rule_match","engine":"modsecurity","id":942100,"rule_id":942100,"phase":2,"severity":2,"disruptive":false,"msg":"..."}
+{"component":"modsecurity-proxy-wasm","event":"tx_interrupt","engine":"modsecurity","config_id":"kubewaf/shop/shop-waf","id":949110,"rule_id":949110,"disruptive":true,"phase_name":"request_body"}
+{"component":"modsecurity-proxy-wasm","event":"config_applied","config_id":"kubewaf/shop/shop-waf","mode":"kubewaf","metric_labels":3,"per_rule_id":false,"stats":true}
 ```
 
 **OCI artifact** — wasm, default WAF JSON, and an Envoy example in one image:

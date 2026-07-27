@@ -14,6 +14,7 @@
 
 #include "proxy_wasm_intrinsics.h"
 #include "metrics.h"
+#include "version.h"
 #include "waf_config.h"
 #include "wasm_vfs.h"
 
@@ -80,7 +81,7 @@ public:
   explicit ModSecRootContext(uint32_t id, std::string_view root_id) : RootContext(id, root_id) {}
 
   bool onConfigure(size_t configuration_size) override;
-  bool onStart(size_t) override { return true; }
+  bool onStart(size_t) override;
 
   ModSecurity* modsec_{nullptr};
   RulesSet* rules_{nullptr};
@@ -134,8 +135,8 @@ private:
   void appendBufferedResponseBody(size_t& buffer_size);
   void logStructuredEvent(const char* event, int64_t rule_id, int phase, const char* phase_name,
                           int severity, bool disruptive, const std::string& msg,
-                          const std::string& tags_csv);
-  static std::string jsonEscape(std::string_view s);
+                          const std::string& tags_csv, const std::string& data = "",
+                          const std::string& match = "");
 };
 
 static RegisterContextFactory register_ModSecContext(CONTEXT_FACTORY(ModSecContext),
@@ -143,23 +144,91 @@ static RegisterContextFactory register_ModSecContext(CONTEXT_FACTORY(ModSecConte
 
 static thread_local ModSecContext* g_active_modsec_context = nullptr;
 
-// Emit a compact rule line for go-ftw / operators.
-// Envoy truncates wasm log lines (~512 chars including its own prefix + __FILE__),
-// so put [id "N"] first. Keep a short classic ModSecurity snippet so X-CRS-Test
-// markers (Value: `...`) still appear for go-ftw log synchronization.
-static void logRuleMatchCompact(const RuleMessage& rule_message) {
-  std::string line = "[modsecurity-proxy-wasm][rule] [id \"";
-  line += std::to_string(rule_message.m_rule.m_ruleId);
-  line += "\"] ";
-  line += RuleMessage::log(rule_message).substr(0, 180);
-  LOG_WARN(line);
+// ---------------------------------------------------------------------------
+// Fully JSON logging (one JSON object per Envoy wasm log line).
+// go-ftw recognizes `"id":N` / `"ruleId":N` via its JSON rule-id regex.
+// Keep lines compact — Envoy truncates wasm log lines (~512 chars with prefix).
+// ---------------------------------------------------------------------------
+
+static std::string jsonEscape(std::string_view s) {
+  std::string out;
+  out.reserve(s.size() + 8);
+  for (char c : s) {
+    switch (c) {
+      case '"':
+        out += "\\\"";
+        break;
+      case '\\':
+        out += "\\\\";
+        break;
+      case '\n':
+        out += "\\n";
+        break;
+      case '\r':
+        out += "\\r";
+        break;
+      case '\t':
+        out += "\\t";
+        break;
+      default:
+        if (static_cast<unsigned char>(c) < 0x20) {
+          char buf[8];
+          std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
+          out += buf;
+        } else {
+          out.push_back(c);
+        }
+    }
+  }
+  return out;
+}
+
+// Emit a pure-JSON lifecycle/diagnostic line. `fields` is a comma-joined fragment
+// of additional JSON members without a leading comma (may be empty).
+static void logJson(bool is_error, const char* event, const std::string& fields = {}) {
+  std::ostringstream js;
+  js << "{\"component\":\"modsecurity-proxy-wasm\",\"event\":\"" << event << "\"";
+  if (!fields.empty()) {
+    js << "," << fields;
+  }
+  js << "}";
+  if (is_error) {
+    LOG_ERROR(js.str());
+  } else {
+    LOG_WARN(js.str());
+  }
+}
+
+// Fallback rule-match line when no stream context is active (rare configure-time).
+// "id" is required for go-ftw JSON log parsing.
+static void logRuleMatchJson(const RuleMessage& rule_message) {
+  std::ostringstream js;
+  js << "{\"component\":\"modsecurity-proxy-wasm\",\"event\":\"rule_match\""
+     << ",\"engine\":\"modsecurity\""
+     << ",\"id\":" << rule_message.m_rule.m_ruleId
+     << ",\"rule_id\":" << rule_message.m_rule.m_ruleId
+     << ",\"phase\":" << rule_message.getPhase()
+     << ",\"severity\":" << rule_message.m_severity
+     << ",\"disruptive\":" << (rule_message.m_isDisruptive ? "true" : "false");
+  if (!rule_message.m_message.empty()) {
+    js << ",\"msg\":\"" << jsonEscape(rule_message.m_message.substr(0, 256)) << "\"";
+  }
+  // data/match carry X-CRS-Test marker values for go-ftw log synchronization.
+  if (!rule_message.m_data.empty()) {
+    js << ",\"data\":\"" << jsonEscape(rule_message.m_data.substr(0, 180)) << "\"";
+  }
+  if (!rule_message.m_match.empty()) {
+    js << ",\"match\":\"" << jsonEscape(rule_message.m_match.substr(0, 180)) << "\"";
+  }
+  js << "}";
+  LOG_WARN(js.str());
 }
 
 // Log callback for ModSecurity rule matches
 static void modsecurity_proxy_wasm_log_cb(void* data, const void* ruleMessagev) {
   (void)data;
   if (ruleMessagev == nullptr) {
-    LOG_WARN("[modsecurity-proxy-wasm] logCb called with null ruleMessage");
+    logJson(false, "log_cb_null");
     return;
   }
   const RuleMessage* ruleMessage = reinterpret_cast<const RuleMessage*>(ruleMessagev);
@@ -167,7 +236,7 @@ static void modsecurity_proxy_wasm_log_cb(void* data, const void* ruleMessagev) 
     g_active_modsec_context->recordRuleMatch(*ruleMessage);
   } else {
     // Fallback when no active stream context (configure-time matches are rare).
-    logRuleMatchCompact(*ruleMessage);
+    logRuleMatchJson(*ruleMessage);
   }
 }
 
@@ -187,34 +256,84 @@ SecRule ARGS "@rx <script" "id:1000,phase:2,deny,status:403,msg:'Basic XSS block
 namespace {
 
 bool loadRuleChunk(const char* label, const char* data, std::size_t size, void* user, std::string& err) {
-  (void)label;
   if (data == nullptr || size == 0) {
     return true;
   }
   auto* rules = static_cast<RulesSet*>(user);
-  std::string chunk(data, size);
-  const char* ref = modsecurity_proxy_wasm_rule_ref_path(label);
+  const char* lab = (label != nullptr && label[0] != '\0') ? label : "(anonymous)";
+  // Progress log — if Envoy dies with "unreachable" right after a label, that chunk is the culprit.
+  {
+    std::ostringstream fields;
+    fields << "\"label\":\"" << jsonEscape(lab) << "\",\"bytes\":" << size;
+    logJson(false, "rules_loading", fields.str());
+  }
+  // Always log a short preview for small inline chunks (custom user rules).
+  if (size > 0 && size < 512) {
+    std::string preview(data, size);
+    // Collapse newlines so the JSON string stays single-line.
+    for (char& c : preview) {
+      if (c == '\n' || c == '\r') c = ' ';
+    }
+    std::ostringstream fields;
+    fields << "\"label\":\"" << jsonEscape(lab) << "\",\"preview\":\"" << jsonEscape(preview) << "\"";
+    logJson(false, "rules_preview", fields.str());
+  }
+
+  // Keep ref in a real std::string for the duration of load() (API takes const std::string&).
+  std::string ref(modsecurity_proxy_wasm_rule_ref_path(label));
+  // Always copy into a mutable buffer. RulesSet::load may mutate/parse in place;
+  // zero-copy into read-only catalog/rodata has caused unreachable traps on some
+  // custom SecRule text after a full CRS load.
+  std::string chunk;
+  chunk.reserve(size + 1);
+  chunk.assign(data, size);
   int ret = rules->load(chunk.c_str(), ref);
   if (ret < 0) {
     err = rules->m_parserError.str();
+    if (err.empty()) {
+      err = std::string("RulesSet::load failed for ") + lab;
+    }
+    std::ostringstream fields;
+    fields << "\"label\":\"" << jsonEscape(lab) << "\",\"error\":\"" << jsonEscape(err) << "\"";
+    logJson(true, "rules_load_failed", fields.str());
     return false;
+  }
+  {
+    std::ostringstream fields;
+    fields << "\"label\":\"" << jsonEscape(lab) << "\"";
+    logJson(false, "rules_loaded", fields.str());
   }
   return true;
 }
 
 }  // namespace
 
+bool ModSecRootContext::onStart(size_t /*vm_configuration_size*/) {
+  // First log line from this VM — use it to confirm which .wasm Envoy actually loaded.
+  // Also touch embedded metadata so LTO cannot strip the inspect-wasm block.
+  (void)modsecurity_proxy_wasm_metadata();
+  LOG_WARN(MODSECURITY_PROXY_WASM_VERSION_LINE);
+  return true;
+}
+
 bool ModSecRootContext::onConfigure(size_t configuration_size) {
-  LOG_WARN("[modsecurity-proxy-wasm] onConfigure size=" + std::to_string(configuration_size));
+  // Repeat version first on every configure (Envoy may not surface onStart in all dumps).
+  (void)modsecurity_proxy_wasm_metadata();
+  LOG_WARN(MODSECURITY_PROXY_WASM_VERSION_LINE);
+  {
+    std::ostringstream fields;
+    fields << "\"size\":" << configuration_size;
+    logJson(false, "configure_start", fields.str());
+  }
 
   std::string config;
   if (!readPluginConfig(configuration_size, config)) {
-    LOG_ERROR("[modsecurity-proxy-wasm] Failed to read plugin configuration");
+    logJson(true, "configure_failed", "\"error\":\"Failed to read plugin configuration\"");
     return false;
   }
 
   if (!parseWafPluginOptions(config, plugin_options_)) {
-    LOG_ERROR("[modsecurity-proxy-wasm] Failed to parse plugin configuration options");
+    logJson(true, "configure_failed", "\"error\":\"Failed to parse plugin configuration options\"");
     return false;
   }
   metrics_.configure(plugin_options_.metrics);
@@ -239,40 +358,51 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
   // Phrase lists live in the embedded catalog and are served to PmFromFile via
   // modsecurity_proxy_wasm_resolve_data_file (Envoy V8 has no writable MEMFS).
   if (!modsecurity_proxy_wasm_mount_crs_data_files()) {
-    LOG_ERROR("[modsecurity-proxy-wasm] CRS .data catalog missing — @pmFromFile rules will not load");
+    logJson(true, "configure_failed",
+            "\"error\":\"CRS .data catalog missing — @pmFromFile rules will not load\"");
     return false;
   }
-  LOG_WARN("[modsecurity-proxy-wasm] CRS .data phrase lists ready (catalog-backed @pmFromFile)");
+  logJson(false, "crs_data_ready", "\"source\":\"catalog\"");
 
   std::string err;
   if (!applyWafConfiguration(config, loadRuleChunk, rules_, err)) {
     if (!plugin_options_.allow_fallback || !wafConfigAllowsFallback(config)) {
-      LOG_ERROR(std::string("[modsecurity-proxy-wasm] WAF config load failed (fail-closed): ") + err);
+      std::ostringstream fields;
+      fields << "\"error\":\"" << jsonEscape(err) << "\",\"fail_closed\":true";
+      logJson(true, "config_load_failed", fields.str());
       return false;
     }
-    LOG_WARN("[modsecurity-proxy-wasm] WAF config load failed, allow_fallback=true — loading minimal built-in rules");
+    {
+      std::ostringstream fields;
+      fields << "\"error\":\"" << jsonEscape(err)
+             << "\",\"allow_fallback\":true,\"action\":\"load_minimal_builtin\"";
+      logJson(false, "config_load_failed", fields.str());
+    }
     int ret = rules_->load(kDefaultRules);
     if (ret < 0) {
-      LOG_ERROR(std::string("[modsecurity-proxy-wasm] Failed to load fallback rules: ") + rules_->m_parserError.str());
+      std::ostringstream fields;
+      fields << "\"error\":\"" << jsonEscape(rules_->m_parserError.str()) << "\"";
+      logJson(true, "fallback_rules_failed", fields.str());
       return false;
     }
-    LOG_WARN("[modsecurity-proxy-wasm] Minimal fallback rules loaded");
+    logJson(false, "fallback_rules_loaded");
     metrics_.countConfigureFallbackRules();
     return true;
   }
 
-  std::ostringstream summary;
-  summary << "[modsecurity-proxy-wasm] WAF configuration applied";
-  if (!plugin_options_.config_id.empty()) {
-    summary << " config_id=" << plugin_options_.config_id;
+  {
+    std::ostringstream fields;
+    if (!plugin_options_.config_id.empty()) {
+      fields << "\"config_id\":\"" << jsonEscape(plugin_options_.config_id) << "\",";
+    }
+    if (!plugin_options_.mode.empty()) {
+      fields << "\"mode\":\"" << jsonEscape(plugin_options_.mode) << "\",";
+    }
+    fields << "\"metric_labels\":" << plugin_options_.metrics.labels.size()
+           << ",\"per_rule_id\":" << (plugin_options_.metrics.per_rule_id ? "true" : "false")
+           << ",\"stats\":" << (plugin_options_.metrics.enabled ? "true" : "false");
+    logJson(false, "config_applied", fields.str());
   }
-  if (!plugin_options_.mode.empty()) {
-    summary << " mode=" << plugin_options_.mode;
-  }
-  summary << " metric_labels=" << plugin_options_.metrics.labels.size()
-          << " per_rule_id=" << (plugin_options_.metrics.per_rule_id ? "true" : "false")
-          << " stats=" << (plugin_options_.metrics.enabled ? "on" : "off");
-  LOG_WARN(summary.str());
   return true;
 }
 
@@ -307,45 +437,14 @@ void ModSecContext::activateContext() {
   g_active_modsec_context = this;
 }
 
-std::string ModSecContext::jsonEscape(std::string_view s) {
-  std::string out;
-  out.reserve(s.size() + 8);
-  for (char c : s) {
-    switch (c) {
-      case '"':
-        out += "\\\"";
-        break;
-      case '\\':
-        out += "\\\\";
-        break;
-      case '\n':
-        out += "\\n";
-        break;
-      case '\r':
-        out += "\\r";
-        break;
-      case '\t':
-        out += "\\t";
-        break;
-      default:
-        if (static_cast<unsigned char>(c) < 0x20) {
-          char buf[8];
-          std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
-          out += buf;
-        } else {
-          out.push_back(c);
-        }
-    }
-  }
-  return out;
-}
-
 void ModSecContext::logStructuredEvent(const char* event, int64_t rule_id, int phase,
                                        const char* phase_name, int severity, bool disruptive,
-                                       const std::string& msg, const std::string& tags_csv) {
+                                       const std::string& msg, const std::string& tags_csv,
+                                       const std::string& data, const std::string& match) {
   auto* root = rootContext();
   std::ostringstream js;
-  js << "{\"event\":\"" << event << "\""
+  // Pure JSON — no text prefix. component identifies the filter in Envoy multi-plugin dumps.
+  js << "{\"component\":\"modsecurity-proxy-wasm\",\"event\":\"" << event << "\""
      << ",\"engine\":\"modsecurity\"";
   if (!root->plugin_options_.config_id.empty()) {
     js << ",\"config_id\":\"" << jsonEscape(root->plugin_options_.config_id) << "\"";
@@ -389,11 +488,18 @@ void ModSecContext::logStructuredEvent(const char* event, int64_t rule_id, int p
   if (!msg.empty()) {
     js << ",\"msg\":\"" << jsonEscape(msg.substr(0, 256)) << "\"";
   }
+  // data/match carry matched values (incl. X-CRS-Test markers for go-ftw).
+  if (!data.empty()) {
+    js << ",\"data\":\"" << jsonEscape(data.substr(0, 180)) << "\"";
+  }
+  if (!match.empty()) {
+    js << ",\"match\":\"" << jsonEscape(match.substr(0, 180)) << "\"";
+  }
   if (!tags_csv.empty()) {
     js << ",\"tags\":\"" << jsonEscape(tags_csv.substr(0, 256)) << "\"";
   }
   js << "}";
-  LOG_WARN(std::string("[kubewaf][security] ") + js.str());
+  LOG_WARN(js.str());
 }
 
 void ModSecContext::recordRuleMatch(const RuleMessage& rule_message) {
@@ -404,21 +510,16 @@ void ModSecContext::recordRuleMatch(const RuleMessage& rule_message) {
                                          rule_message.m_isDisruptive, rule_message.m_rule.m_ruleId,
                                          rule_message.m_tags);
 
-  // go-ftw requires rule IDs in the log; emit compact [id "N"] before structured JSON.
-  logRuleMatchCompact(rule_message);
-
   std::string tags_csv;
   for (const auto& t : rule_message.m_tags) {
     if (!tags_csv.empty()) tags_csv.push_back(',');
     tags_csv.append(t);
     if (tags_csv.size() > 200) break;
   }
-  std::string msg;
-  if (!rule_message.m_message.empty()) {
-    msg = rule_message.m_message;
-  }
+  // Single pure-JSON line: go-ftw parses "id"; msg/data carry marker text.
   logStructuredEvent("rule_match", rule_message.m_rule.m_ruleId, rule_message.getPhase(), nullptr,
-                     rule_message.m_severity, rule_message.m_isDisruptive, msg, tags_csv);
+                     rule_message.m_severity, rule_message.m_isDisruptive, rule_message.m_message,
+                     tags_csv, rule_message.m_data, rule_message.m_match);
 }
 
 int ModSecContext::processIntervention(const char* phase) {

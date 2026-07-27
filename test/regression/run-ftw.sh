@@ -136,10 +136,11 @@ wait_for_waf_logs() {
   ctr="${COMPOSE[0]}"
   vol="$(log_volume)"
   retries=90
-  echo "==> Waiting for modsecurity-proxy-wasm rule lines in envoy.log"
+  echo "==> Waiting for modsecurity-proxy-wasm JSON rule_match lines in envoy.log"
   while [[ "$retries" -gt 0 ]]; do
+    # Pure JSON logs: {"event":"rule_match",...,"id":N,...}
     if "$ctr" run --rm -v "${vol}:/logs:ro" docker.io/library/alpine:3.20 \
-        grep -qF '[modsecurity-proxy-wasm][rule]' /logs/envoy.log 2>/dev/null; then
+        grep -qE '"event"[[:space:]]*:[[:space:]]*"rule_match"' /logs/envoy.log 2>/dev/null; then
       return 0
     fi
     curl -sf -H "Host: localhost" -H "X-CRS-Test: ftw-wait" \
