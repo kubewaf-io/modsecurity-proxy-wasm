@@ -19,9 +19,9 @@ EMSDK_VERSION ?= 3.1.74
 PROXY_WASM_CPP_SDK_VERSION ?= 727de65b37507611b76123316c6832581f42d4f0
 
 # renovate: datasource=github-tags depName=owasp-modsecurity/ModSecurity versioning=semver
-MODSECURITY_VERSION ?= v3.0.15
+MODSECURITY_VERSION ?= v3.0.16
 # renovate: datasource=github-tags depName=owasp-modsecurity/ModSecurity versioning=semver digest
-MODSECURITY_SHA ?= 0fb4aff98b4980cf6426697d5605c424e3d5bb60
+MODSECURITY_SHA ?= 7ea9fefbe0ba409d8733b4d682c8c4c059cd028d
 
 # renovate: datasource=github-tags depName=PCRE2Project/pcre2
 PCRE2_VERSION ?= pcre2-10.47
