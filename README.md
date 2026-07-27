@@ -43,6 +43,22 @@ When driven by **kubeWAF**, the operator also sets `mode`, `config_id`, identity
 `metric_labels`, nested `metrics`, and `block` (see
 [`schemas/waf-plugin-config.json`](../schemas/waf-plugin-config.json)).
 
+Large Path B SecLang lists are sent compressed:
+
+```json
+{
+  "directives_encoding": "gzip+base64",
+  "default_directives": "default",
+  "directives_map": {
+    "default": "<base64(gzip(joined SecLang lines))>"
+  },
+  "directives_stats": { "raw_bytes": 1200000, "compressed_bytes": 90000 }
+}
+```
+
+The filter base64-decodes and gunzips on configure (32 MiB inflated cap), then loads
+lines the same way as a plain string array. Small configs stay uncompressed arrays.
+
 ```json
 {
   "mode": "kubewaf",

@@ -58,6 +58,24 @@ TEST(WafConfig, MissingProfileFails) {
   EXPECT_NE(error.find("directives_map profile not found"), std::string::npos);
 }
 
+// Deterministic gzip (mtime=0) of "SecRuleEngine On\n", base64.
+// python: gzip.GzipFile(mtime=0) + base64
+TEST(WafConfig, GzipBase64DirectivesExpand) {
+  const char* on_b64 = "H4sIAAAAAAAC/wtOTQ4qzUl1zUvPzEtV8M/jAgBKmB0mEQAAAA==";
+  std::string cfg = std::string(R"({
+    "directives_encoding": "gzip+base64",
+    "default_directives": "default",
+    "directives_map": {
+      "default": ")") +
+                    on_b64 + R"("
+    }
+  })";
+  std::string rules;
+  std::string error;
+  ASSERT_TRUE(expandWafConfiguration(cfg, rules, error)) << error;
+  EXPECT_NE(rules.find("SecRuleEngine On"), std::string::npos) << rules;
+}
+
 TEST(WafConfig, UnknownIncludeFails) {
   const std::string cfg = R"({
     "directives_map": {

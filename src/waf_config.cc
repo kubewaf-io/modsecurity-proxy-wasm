@@ -7,9 +7,14 @@
 #include <string>
 #include <vector>
 
+#include <zlib.h>
+
 #include "generated/rules_catalog.h"
 
 namespace {
+
+// Must match internal/dataplane/config DirectivesMaxInflatedBytes.
+constexpr std::size_t kMaxInflatedDirectivesBytes = 32u * 1024u * 1024u;
 
 // Production baseline also shipped as build/rules/kubewaf-defaults.conf in the CRS catalog.
 // Kept in-source so unit tests and pre-regeneration binaries always resolve Include @kubewaf-defaults.
@@ -308,19 +313,28 @@ size_t findJsonArrayEnd(const std::string& json, size_t arr_start) {
   return std::string::npos;
 }
 
-std::vector<std::string> extractDirectiveArray(const std::string& json, const std::string& profile) {
-  std::vector<std::string> out;
+// Locate "directives_map"."profile" value start (after colon). Returns npos on failure.
+size_t findDirectivesMapProfileValue(const std::string& json, const std::string& profile) {
   const std::string map_key = "\"directives_map\"";
   size_t map_pos = json.find(map_key);
-  if (map_pos == std::string::npos) return out;
+  if (map_pos == std::string::npos) return std::string::npos;
 
   const std::string profile_key = "\"" + profile + "\"";
   size_t prof_pos = json.find(profile_key, map_pos);
-  if (prof_pos == std::string::npos) return out;
+  if (prof_pos == std::string::npos) return std::string::npos;
 
-  size_t arr_start = json.find('[', prof_pos);
-  if (arr_start == std::string::npos) return out;
+  size_t colon = json.find(':', prof_pos + profile_key.size());
+  if (colon == std::string::npos) return std::string::npos;
+  size_t v = json.find_first_not_of(" \t\n\r", colon + 1);
+  return v;
+}
 
+std::vector<std::string> extractDirectiveArray(const std::string& json, const std::string& profile) {
+  std::vector<std::string> out;
+  size_t v = findDirectivesMapProfileValue(json, profile);
+  if (v == std::string::npos || json[v] != '[') return out;
+
+  size_t arr_start = v;
   size_t arr_end = findJsonArrayEnd(json, arr_start);
   if (arr_end == std::string::npos) return out;
 
@@ -359,6 +373,165 @@ std::vector<std::string> extractDirectiveArray(const std::string& json, const st
     i = next;
   }
   return out;
+}
+
+// Extract directives_map.profile when it is a JSON string (gzip+base64 blob).
+std::string extractDirectiveMapString(const std::string& json, const std::string& profile) {
+  size_t v = findDirectivesMapProfileValue(json, profile);
+  if (v == std::string::npos || json[v] != '"') return "";
+  // Reuse string value parser from key-less position: build fake fragment.
+  // extractJsonStringValue needs a key — parse manually from v.
+  size_t pos = v + 1;
+  std::string out;
+  bool escape = false;
+  for (; pos < json.size(); ++pos) {
+    char c = json[pos];
+    if (escape) {
+      if (c == 'n') out.push_back('\n');
+      else if (c == 'r') out.push_back('\r');
+      else if (c == 't') out.push_back('\t');
+      else if (c == '"') out.push_back('"');
+      else if (c == '\\') out.push_back('\\');
+      else out.push_back(c);
+      escape = false;
+      continue;
+    }
+    if (c == '\\') {
+      escape = true;
+      continue;
+    }
+    if (c == '"') break;
+    out.push_back(c);
+  }
+  return out;
+}
+
+// Standard base64 decode (alphabet + URL-safe not required).
+bool base64Decode(const std::string& in, std::string& out, std::string& error) {
+  static const int8_t kDec[256] = {
+      -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+      -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-1,-1,-1,
+      -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
+      -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,-1,-1,-1,-1,-1,
+      -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+      -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+      -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+      -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1};
+  out.clear();
+  out.reserve(in.size() * 3 / 4);
+  int val = 0;
+  int valb = -8;
+  for (unsigned char c : in) {
+    if (c == '=' || std::isspace(c)) continue;
+    int d = kDec[c];
+    if (d < 0) {
+      error = "invalid base64 in compressed directives";
+      return false;
+    }
+    val = (val << 6) + d;
+    valb += 6;
+    if (valb >= 0) {
+      out.push_back(static_cast<char>((val >> valb) & 0xFF));
+      valb -= 8;
+    }
+  }
+  return true;
+}
+
+// Gunzip (RFC 1952 wrapper) using zlib inflateInit2 windowBits=16+MAX_WBITS.
+bool gzipInflate(const std::string& compressed, std::string& plain, std::string& error) {
+  if (compressed.empty()) {
+    error = "empty compressed directives";
+    return false;
+  }
+  z_stream strm{};
+  // 16 + MAX_WBITS: decode gzip header
+  if (inflateInit2(&strm, 16 + MAX_WBITS) != Z_OK) {
+    error = "gzip inflateInit2 failed";
+    return false;
+  }
+  strm.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(compressed.data()));
+  strm.avail_in = static_cast<uInt>(compressed.size());
+  plain.clear();
+  plain.reserve(std::min(compressed.size() * 8, static_cast<std::size_t>(256 * 1024)));
+  std::vector<char> buf(64 * 1024);
+  int ret = Z_OK;
+  do {
+    strm.next_out = reinterpret_cast<Bytef*>(buf.data());
+    strm.avail_out = static_cast<uInt>(buf.size());
+    ret = inflate(&strm, Z_NO_FLUSH);
+    if (ret != Z_OK && ret != Z_STREAM_END) {
+      inflateEnd(&strm);
+      error = "gzip inflate failed (code " + std::to_string(ret) + ")";
+      return false;
+    }
+    std::size_t produced = buf.size() - strm.avail_out;
+    if (plain.size() + produced > kMaxInflatedDirectivesBytes) {
+      inflateEnd(&strm);
+      error = "inflated directives exceed max size";
+      return false;
+    }
+    plain.append(buf.data(), produced);
+  } while (ret != Z_STREAM_END);
+  inflateEnd(&strm);
+  return true;
+}
+
+std::vector<std::string> splitDirectiveLines(const std::string& text) {
+  std::vector<std::string> out;
+  size_t i = 0;
+  while (i < text.size()) {
+    size_t nl = text.find('\n', i);
+    if (nl == std::string::npos) {
+      std::string line = trim(text.substr(i));
+      if (!line.empty()) out.push_back(line);
+      break;
+    }
+    std::string line = trim(text.substr(i, nl - i));
+    if (!line.empty() && line.rfind("#", 0) != 0) {
+      // Keep comments filtered later; push non-empty raw (comments skipped in consumer)
+      out.push_back(line);
+    } else if (!line.empty()) {
+      out.push_back(line);
+    }
+    i = nl + 1;
+  }
+  return out;
+}
+
+// Load directive list: plain JSON array or gzip+base64 string under directives_map.
+bool loadDirectiveList(const std::string& json, const std::string& profile,
+                       std::vector<std::string>& directives, std::string& error) {
+  directives.clear();
+  std::string encoding = extractJsonStringValue(json, "directives_encoding");
+  if (encoding == "gzip+base64" || encoding == "gzip") {
+    std::string b64 = extractDirectiveMapString(json, profile);
+    if (b64.empty()) {
+      error = "directives_map profile not found or empty (compressed): " + profile;
+      return false;
+    }
+    std::string compressed;
+    if (encoding == "gzip+base64" || encoding.find("base64") != std::string::npos) {
+      if (!base64Decode(b64, compressed, error)) return false;
+    } else {
+      compressed = b64;
+    }
+    std::string plain;
+    if (!gzipInflate(compressed, plain, error)) return false;
+    directives = splitDirectiveLines(plain);
+    if (directives.empty()) {
+      error = "compressed directives inflated to empty list";
+      return false;
+    }
+    return true;
+  }
+  // Plain array form.
+  directives = extractDirectiveArray(json, profile);
+  if (directives.empty()) {
+    error = "directives_map profile not found or empty: " + profile;
+    return false;
+  }
+  return true;
 }
 
 bool loadChunk(RuleChunkLoader loader, void* user, const char* label, const char* data, std::size_t size,
@@ -463,9 +636,8 @@ bool applyJsonConfig(const std::string& json, RuleChunkLoader loader, void* user
   std::string profile = extractJsonStringValue(json, "default_directives");
   if (profile.empty()) profile = "default";
 
-  std::vector<std::string> directives = extractDirectiveArray(json, profile);
-  if (directives.empty()) {
-    error = "directives_map profile not found or empty: " + profile;
+  std::vector<std::string> directives;
+  if (!loadDirectiveList(json, profile, directives, error)) {
     return false;
   }
 
@@ -576,9 +748,8 @@ bool expandJsonConfig(const std::string& json, std::string& rules_out, std::stri
   std::string profile = extractJsonStringValue(json, "default_directives");
   if (profile.empty()) profile = "default";
 
-  std::vector<std::string> directives = extractDirectiveArray(json, profile);
-  if (directives.empty()) {
-    error = "directives_map profile not found or empty: " + profile;
+  std::vector<std::string> directives;
+  if (!loadDirectiveList(json, profile, directives, error)) {
     return false;
   }
 

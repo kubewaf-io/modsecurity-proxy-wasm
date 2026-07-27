@@ -16,7 +16,7 @@ FUZZ_BUILD_DIR  := $(TEST_DIR)/fuzz/.build
 UNIT_CXX        ?= g++
 UNIT_CXXFLAGS   := -std=c++17 -Wall -Wextra -I$(ROOT_DIR)/src \
                    -I$(TEST_DIR)/unit -I$(GTEST_DIR)/googletest/include -I$(GTEST_DIR)/googlemock/include
-UNIT_LDFLAGS    := -L$(UNIT_BUILD_DIR) -lgtest_main -lgtest -pthread
+UNIT_LDFLAGS    := -L$(UNIT_BUILD_DIR) -lgtest_main -lgtest -pthread -lz
 
 .PHONY: deps-test deps-perf-charts test-unit test-fuzz test-bats \
 	test-perf-k6 test-perf-k6-compare test-perf-k6-ci test-perf-k6-keep \

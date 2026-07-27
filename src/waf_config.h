@@ -9,7 +9,9 @@
 // Expand Envoy plugin configuration into ModSecurity rules text.
 // Supports:
 //   1) JSON WAF config (directives_map / default_directives + Include @virtual paths)
-//   2) Legacy plain-text SecLanguage (passed through unchanged)
+//   2) Compressed directives: directives_encoding=gzip+base64 and
+//      directives_map.default as base64(gzip(SecLang lines joined by "\n"))
+//   3) Legacy plain-text SecLanguage (passed through unchanged)
 //
 // Virtual includes recognized:
 //   @kubewaf-defaults  — production body-access / tmp baseline (kubeWAF)
