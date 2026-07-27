@@ -27,6 +27,8 @@ constexpr size_t kCatalogSize = sizeof(kCatalog) / sizeof(kCatalog[0]);
 
 }  // namespace
 
+const char* catalog_mode() { return "path-b"; }
+
 const RuleAsset* lookup(const char* path) {
   if (path == nullptr) {
     return nullptr;

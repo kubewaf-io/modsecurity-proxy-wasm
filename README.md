@@ -2,7 +2,7 @@
 
 ModSecurity [Proxy-Wasm](https://github.com/proxy-wasm/spec) filter for Envoy (`envoy.wasm.runtime.v8`) with embedded **OWASP CRS v4.27.0**.
 
-**Full documentation (kubeWAF docs site):** [modsecurity-proxy-wasm](https://kubewaf.io/docs/modsecurity-proxy-wasm) · [pow-proxy-wasm](https://kubewaf.io/docs/pow-proxy-wasm) · [operator](https://kubewaf.io/docs/operator)
+**Full documentation (kubeWAF docs site):** [modsecurity-proxy-wasm](https://kubewaf.io/engines/modsecurity-proxy-wasm/) · [pow-proxy-wasm](https://kubewaf.io/engines/pow-proxy-wasm/) · [operator docs](https://kubewaf.io/docs/home/)
 
 ## Quick start
 
@@ -83,14 +83,40 @@ lines the same way as a plain string array. Small configs stay uncompressed arra
 }
 ```
 
-**Embedded CRS** — OWASP CRS v4.27.0 and phrase lists are baked in at build; load with virtual includes (no runtime filesystem):
+**Rules catalog (build-time embed)** — default **`CATALOG_MODE=path-b`** ships helpers + CRS phrase lists only. CRS *rule confs* are **not** in the wasm; kubeWAF Path B loads structured SecRule CRs as inline SecLang. Phrase files stay embedded so `@pmFromFile scanners-user-agents.data` etc. resolve without a real filesystem.
 
-| Virtual include | Purpose |
-|-----------------|---------|
-| `@kubewaf-defaults` | Production body access / tmp dirs (kubeWAF baseline) |
-| `@demo-conf` | Standalone demo overlay |
-| `@crs-setup-conf` | CRS setup |
-| `@owasp_crs/*.conf` | Full CRS rules |
+| Virtual include | path-b (default) | full (`CATALOG_MODE=full`) |
+|-----------------|------------------|----------------------------|
+| `@kubewaf-defaults` | yes | yes |
+| `@demo-conf` / `@ftw-conf` | yes | yes |
+| `@crs-data/*.data` | yes (`@pmFromFile`) | yes |
+| `@crs-setup-conf` | no | yes (Path A) |
+| `@owasp_crs/*.conf` | no | yes (Path A / `crsEnable`) |
+
+```bash
+# Default (Path B): smaller wasm, no CRS rule confs
+make modsecurity-proxy-wasm.wasm
+
+# Optional Path A engine-embedded CRS
+make modsecurity-proxy-wasm.wasm CATALOG_MODE=full
+```
+
+Path B (operator) plugin config looks like:
+
+```json
+{
+  "directives_map": {
+    "default": [
+      "Include @kubewaf-defaults",
+      "SecRuleEngine On",
+      "SecAction \"id:900000,...\"",
+      "SecRule ... \"id:913100,...@pmFromFile scanners-user-agents.data...\""
+    ]
+  }
+}
+```
+
+Legacy Path A only with `CATALOG_MODE=full`:
 
 ```json
 {

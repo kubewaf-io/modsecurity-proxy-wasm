@@ -16,9 +16,12 @@
 // Virtual includes recognized:
 //   @kubewaf-defaults  — production body-access / tmp baseline (kubeWAF)
 //   @demo-conf         — demo overlay
-//   @crs-setup-conf    — CRS setup
 //   @ftw-conf          — go-ftw harness
-//   @owasp_crs/*.conf  — embedded OWASP CRS
+//   @crs-data/*.data   — CRS phrase lists for @pmFromFile (always embedded)
+//   @crs-setup-conf    — CRS setup (catalog mode full / Path A only)
+//   @owasp_crs/*.conf  — embedded OWASP CRS rules (catalog mode full / Path A only)
+// Default catalog mode is path-b: CRS rule confs are NOT embedded; use structured
+// SecRule CRs. Rebuild with CATALOG_MODE=full for Path A (crsEnable + Include).
 const char* defaultWafJsonConfig();
 bool expandWafConfiguration(const std::string& config, std::string& rules_out, std::string& error);
 

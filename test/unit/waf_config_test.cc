@@ -89,6 +89,34 @@ TEST(WafConfig, UnknownIncludeFails) {
   EXPECT_NE(error.find("unsupported Include target"), std::string::npos);
 }
 
+// path-b catalog (unit stub) omits CRS rule confs — Path A includes must fail clearly.
+TEST(WafConfig, PathAOwaspCrsIncludeFailsOnPathBCatalog) {
+  const std::string cfg = R"({
+    "directives_map": {
+      "default": ["Include @owasp_crs/*.conf"]
+    },
+    "default_directives": "default"
+  })";
+  std::string rules;
+  std::string error;
+  EXPECT_FALSE(expandWafConfiguration(cfg, rules, error));
+  EXPECT_NE(error.find("catalog_mode=path-b"), std::string::npos) << error;
+  EXPECT_NE(error.find("@owasp_crs"), std::string::npos) << error;
+}
+
+TEST(WafConfig, PathACrsSetupIncludeFailsOnPathBCatalog) {
+  const std::string cfg = R"({
+    "directives_map": {
+      "default": ["Include @crs-setup-conf"]
+    },
+    "default_directives": "default"
+  })";
+  std::string rules;
+  std::string error;
+  EXPECT_FALSE(expandWafConfiguration(cfg, rules, error));
+  EXPECT_NE(error.find("catalog_mode=path-b"), std::string::npos) << error;
+}
+
 TEST(WafConfig, AllowFallbackDefaultsFalse) {
   const std::string cfg = R"({"directives_map":{"default":["SecRuleEngine On"]},"default_directives":"default"})";
   EXPECT_FALSE(wafConfigAllowsFallback(cfg));

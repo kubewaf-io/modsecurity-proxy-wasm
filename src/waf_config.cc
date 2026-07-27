@@ -598,13 +598,24 @@ bool loadOwaspCrsGlob(const modsecurity_proxy_wasm_rules::RuleAsset& asset, void
   return loadAsset(ctx->loader, ctx->user, asset, *ctx->seen, *ctx->error);
 }
 
+// Path A virtual includes are only present when the rules catalog was built with
+// CATALOG_MODE=full. Default path-b builds omit CRS rule confs (structured SecRules
+// supply them from the cluster).
+std::string pathACatalogHint(const std::string& target) {
+  const char* mode = modsecurity_proxy_wasm_rules::catalog_mode();
+  if (mode == nullptr) mode = "unknown";
+  return "virtual include " + target + " not in catalog (catalog_mode=" + std::string(mode) +
+         "). Path B builds omit CRS rule confs; use structured SecRule CRs "
+         "(crsEnable:false) or rebuild wasm with CATALOG_MODE=full for Path A.";
+}
+
 bool resolveIncludeLoad(const std::string& target, RuleChunkLoader loader, void* user,
                         std::set<std::string>& seen, std::string& error) {
   if (target == "@kubewaf-defaults") {
     return loadKubeWafDefaults(loader, user, seen, error);
   }
 
-  if (target == "@demo-conf" || target == "@crs-setup-conf" || target == "@ftw-conf") {
+  if (target == "@demo-conf" || target == "@ftw-conf") {
     const auto* asset = modsecurity_proxy_wasm_rules::lookup(target.c_str());
     if (asset == nullptr) {
       error = "unknown virtual include: " + target;
@@ -613,7 +624,27 @@ bool resolveIncludeLoad(const std::string& target, RuleChunkLoader loader, void*
     return loadAsset(loader, user, *asset, seen, error);
   }
 
+  if (target == "@crs-setup-conf") {
+    const auto* asset = modsecurity_proxy_wasm_rules::lookup(target.c_str());
+    if (asset == nullptr) {
+      error = pathACatalogHint(target);
+      return false;
+    }
+    return loadAsset(loader, user, *asset, seen, error);
+  }
+
   if (target == "@owasp_crs/*.conf") {
+    int count = 0;
+    modsecurity_proxy_wasm_rules::foreach_owasp_crs(
+        [](const modsecurity_proxy_wasm_rules::RuleAsset&, void* user) -> bool {
+          *static_cast<int*>(user) += 1;
+          return true;
+        },
+        &count);
+    if (count == 0) {
+      error = pathACatalogHint(target);
+      return false;
+    }
     LoadCtx ctx{loader, user, &seen, &error};
     modsecurity_proxy_wasm_rules::foreach_owasp_crs(loadOwaspCrsGlob, &ctx);
     return error.empty();
@@ -622,7 +653,7 @@ bool resolveIncludeLoad(const std::string& target, RuleChunkLoader loader, void*
   if (target.rfind("@owasp_crs/", 0) == 0) {
     const auto* asset = modsecurity_proxy_wasm_rules::lookup(target.c_str());
     if (asset == nullptr) {
-      error = "unknown virtual include: " + target;
+      error = pathACatalogHint(target);
       return false;
     }
     return loadAsset(loader, user, *asset, seen, error);
@@ -790,7 +821,7 @@ bool resolveIncludeExpand(const std::string& target, std::string& out, std::set<
     return appendKubeWafDefaults(out, seen);
   }
 
-  if (target == "@demo-conf" || target == "@crs-setup-conf" || target == "@ftw-conf") {
+  if (target == "@demo-conf" || target == "@ftw-conf") {
     const auto* asset = modsecurity_proxy_wasm_rules::lookup(target.c_str());
     if (asset == nullptr) {
       error = "unknown virtual include: " + target;
@@ -804,20 +835,45 @@ bool resolveIncludeExpand(const std::string& target, std::string& out, std::set<
     return true;
   }
 
+  if (target == "@crs-setup-conf") {
+    const auto* asset = modsecurity_proxy_wasm_rules::lookup(target.c_str());
+    if (asset == nullptr) {
+      error = pathACatalogHint(target);
+      return false;
+    }
+    if (!seen.count(target)) {
+      seen.insert(target);
+      out.append(asset->data, asset->size);
+      out.push_back('\n');
+    }
+    return true;
+  }
+
   if (target == "@owasp_crs/*.conf") {
+    int count = 0;
+    modsecurity_proxy_wasm_rules::foreach_owasp_crs(
+        [](const modsecurity_proxy_wasm_rules::RuleAsset&, void* user) -> bool {
+          *static_cast<int*>(user) += 1;
+          return true;
+        },
+        &count);
+    if (count == 0) {
+      error = pathACatalogHint(target);
+      return false;
+    }
     struct Ctx {
       std::string* out;
       std::set<std::string>* seen;
       std::string* error;
     } ctx{&out, &seen, &error};
     modsecurity_proxy_wasm_rules::foreach_owasp_crs(appendOwaspCrsGlobExpand, &ctx);
-    return true;
+    return error.empty();
   }
 
   if (target.rfind("@owasp_crs/", 0) == 0) {
     const auto* asset = modsecurity_proxy_wasm_rules::lookup(target.c_str());
     if (asset == nullptr) {
-      error = "unknown virtual include: " + target;
+      error = pathACatalogHint(target);
       return false;
     }
     if (!seen.count(target)) {
@@ -960,15 +1016,14 @@ void fillBlockOptions(const std::string& config, WafBlockOptions& out) {
 const char* kubeWafDefaultsConf() { return kKubeWafDefaultsConf; }
 
 const char* defaultWafJsonConfig() {
+  // Path B–oriented default: helpers only (no Path A CRS includes).
   return R"({
   "directives_map": {
     "default": [
+      "Include @kubewaf-defaults",
       "Include @demo-conf",
       "SecDebugLogLevel 9",
-      "SecRuleEngine On",
-      "Include @crs-setup-conf",
-      "Include @owasp_crs/REQUEST-901-INITIALIZATION.conf",
-      "Include @owasp_crs/*.conf"
+      "SecRuleEngine On"
     ]
   },
   "default_directives": "default"
