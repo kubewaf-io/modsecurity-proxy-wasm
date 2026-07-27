@@ -96,10 +96,10 @@ When driven by **kubeWAF**, the operator also sets `mode`, `config_id`, identity
 curl -s http://127.0.0.1:9901/stats/prometheus | grep -E 'modsecurity_proxy_wasm|kubewaf_waf'
 ```
 
-**Security logs** — every plugin log line is a single JSON object (no text prefix). Lifecycle events use `"event":"version"|"configure_start"|"config_applied"|…`; security events use `"event":"rule_match"` / `"tx_interrupt"`. Rule IDs are emitted as `"id"` (go-ftw JSON parser) and `"rule_id"`.
+**Security logs** — plugin log lines are JSON objects (no text prefix). Lifecycle events use `"event":"version"|"configure_start"|"config_applied"|…`; security events use `"event":"rule_match"` / `"tx_interrupt"`. Rule IDs are emitted as `"id"` (go-ftw JSON parser) and `"rule_id"`. Rule-match lines also append a classic ModSecurity fragment (`[id "N"] [msg "…"]`) so go-ftw `match_regex` tests (e.g. CRS 922130) succeed. Multipart/body processor errors are logged as raw engine text for the same reason.
 
 ```text
-{"component":"modsecurity-proxy-wasm","event":"rule_match","engine":"modsecurity","id":942100,"rule_id":942100,"phase":2,"severity":2,"disruptive":false,"msg":"..."}
+{"component":"modsecurity-proxy-wasm","event":"rule_match","engine":"modsecurity","id":942100,"rule_id":942100,"phase":2,"severity":2,"disruptive":false,"msg":"..."} [id "942100"] [msg "..."]
 {"component":"modsecurity-proxy-wasm","event":"tx_interrupt","engine":"modsecurity","config_id":"kubewaf/shop/shop-waf","id":949110,"rule_id":949110,"disruptive":true,"phase_name":"request_body"}
 {"component":"modsecurity-proxy-wasm","event":"config_applied","config_id":"kubewaf/shop/shop-waf","mode":"kubewaf","metric_labels":3,"per_rule_id":false,"stats":true}
 ```
