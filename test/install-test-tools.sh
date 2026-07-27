@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOLS_DIR="$SCRIPT_DIR/.tools"
 
 # renovate: datasource=github-tags depName=bats-core/bats-core versioning=semver-coerced
-BATS_VERSION="${BATS_VERSION:-v1.11.1}"
+BATS_VERSION="${BATS_VERSION:-v1.14.0}"
 # renovate: datasource=github-tags depName=google/googletest versioning=semver-coerced
 GTEST_VERSION="${GTEST_VERSION:-v1.15.2}"
 
