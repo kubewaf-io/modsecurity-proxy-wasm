@@ -12,6 +12,8 @@ EMSDK           ?= $(PREFIX)/emsdk
 PROXY_WASM_CPP_SDK ?= $(PREFIX)/proxy-wasm-cpp-sdk
 PCRE2_SRC       ?= $(PREFIX)/pcre2-wasm
 PCRE2_EM        ?= $(PREFIX)/pcre2-em
+YAJL_SRC        ?= $(PREFIX)/yajl
+YAJL_EM         ?= $(PREFIX)/yajl-em
 MODSEC_SRC      ?= $(PREFIX)/modsec
 MODSECURITY_LIB ?= $(PREFIX)/modsecurity-lib
 CRS_DIR         ?= $(PREFIX)/crs
@@ -36,7 +38,8 @@ EMS_ENV         := EMSDK=$(EMSDK) . $(EMSDK)/emsdk_env.sh &&
 
 MODSEC_CONFIGURE_FLAGS := \
 	--with-pcre2=$(PCRE2_EM) \
-	--without-yajl --without-geoip --without-libxml --without-curl \
+	--with-yajl=$(YAJL_EM) \
+	--without-geoip --without-libxml --without-curl \
 	--without-lua --disable-shared --disable-examples --disable-libtool-lock \
 	--disable-debug-logs --disable-mutex-on-pm --without-lmdb --without-maxmind \
 	--without-ssdeep
@@ -49,7 +52,8 @@ EMSCRIPTEN_LINK_OPTS := --no-entry \
 	-sINITIAL_MEMORY=64MB \
 	-sMAXIMUM_MEMORY=512MB \
 	-sSTACK_SIZE=4MB \
-	-sDISABLE_EXCEPTION_CATCHING=1
+	-sDISABLE_EXCEPTION_CATCHING=1 \
+	-sUSE_ZLIB=1
 
 PLUGIN_SRCS := \
 	$(BUILD_DIR)/src/modsecurity_proxy_wasm.cc \
@@ -88,6 +92,7 @@ modsecurity-proxy-wasm.wat: $(MODSECURITY_PROXY_WAT_OUT)
 deps: $(STAMPS_DIR)/emsdk \
 	$(STAMPS_DIR)/proxy-wasm-cpp-sdk \
 	$(STAMPS_DIR)/pcre2 \
+	$(STAMPS_DIR)/yajl \
 	$(STAMPS_DIR)/modsecurity \
 	$(STAMPS_DIR)/crs
 
@@ -141,7 +146,30 @@ $(STAMPS_DIR)/pcre2: | $(STAMPS_DIR)/emsdk
 		> $(PCRE2_EM)/lib/pkgconfig/libpcre2-8.pc
 	touch $@
 
-$(STAMPS_DIR)/modsecurity: $(STAMPS_DIR)/pcre2 \
+$(STAMPS_DIR)/yajl: | $(STAMPS_DIR)/emsdk
+	@mkdir -p $(STAMPS_DIR) $(PREFIX)
+	rm -rf $(YAJL_SRC) $(YAJL_EM)
+	git clone https://github.com/lloyd/yajl.git $(YAJL_SRC)
+	cd $(YAJL_SRC) && git checkout $(YAJL_SHA)
+	test "$$(git -C $(YAJL_SRC) rev-parse HEAD)" = "$(YAJL_SHA)"
+	# Static lib only; install headers + libyajl_s.a under YAJL_EM for ModSecurity --with-yajl.
+	@mkdir -p $(YAJL_SRC)/build $(YAJL_EM)
+	cd $(YAJL_SRC)/build && $(EMS_ENV) emcmake cmake .. \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=$(YAJL_EM) \
+		-DBUILD_SHARED_LIBS=OFF
+	cd $(YAJL_SRC)/build && $(EMS_ENV) emmake make -j$(JOBS)
+	cd $(YAJL_SRC)/build && $(EMS_ENV) emmake make install
+	# ModSecurity looks for libyajl / libyajl2; provide a plain libyajl.a alias.
+	@if [ -f "$(YAJL_EM)/lib/libyajl_s.a" ] && [ ! -f "$(YAJL_EM)/lib/libyajl.a" ]; then \
+		cp "$(YAJL_EM)/lib/libyajl_s.a" "$(YAJL_EM)/lib/libyajl.a"; \
+	fi
+	@if [ -f "$(YAJL_EM)/lib/libyajl_s.a" ] && [ ! -f "$(YAJL_EM)/lib/libyajl2.a" ]; then \
+		cp "$(YAJL_EM)/lib/libyajl_s.a" "$(YAJL_EM)/lib/libyajl2.a"; \
+	fi
+	touch $@
+
+$(STAMPS_DIR)/modsecurity: $(STAMPS_DIR)/pcre2 $(STAMPS_DIR)/yajl \
 		$(BUILD_DIR)/build/patches/modsecurity-pm-from-file-catalog.patch
 	@mkdir -p $(STAMPS_DIR) $(PREFIX)
 	rm -rf $(MODSEC_SRC)
@@ -152,7 +180,10 @@ $(STAMPS_DIR)/modsecurity: $(STAMPS_DIR)/pcre2 \
 	# Serve CRS .data phrase lists from the proxy-wasm catalog (Envoy V8 has no MEMFS).
 	cd $(MODSEC_SRC) && patch -p1 < $(BUILD_DIR)/build/patches/modsecurity-pm-from-file-catalog.patch
 	cd $(MODSEC_SRC) && ./build.sh
-	cd $(MODSEC_SRC) && $(EMS_ENV) PKG_CONFIG_PATH=$(PCRE2_EM)/lib/pkgconfig \
+	cd $(MODSEC_SRC) && $(EMS_ENV) \
+		PKG_CONFIG_PATH=$(PCRE2_EM)/lib/pkgconfig:$(YAJL_EM)/lib/pkgconfig \
+		CPPFLAGS="-I$(YAJL_EM)/include" \
+		LDFLAGS="-L$(YAJL_EM)/lib" \
 		emconfigure ./configure $(MODSEC_CONFIGURE_FLAGS)
 	cd $(MODSEC_SRC) && $(EMS_ENV) emmake make -j$(JOBS) -C others
 	cd $(MODSEC_SRC) && $(EMS_ENV) emmake make -j$(JOBS) -C src libmodsecurity.la
@@ -213,6 +244,7 @@ $(MODSECURITY_PROXY_WASM_OUT): deps $(GENERATED_CC) $(WASM_GETENTROPY_OBJ) $(WAS
 		$(WASM_GETENTROPY_OBJ) \
 		$(WASM_STUBS_OBJ) \
 		$(PCRE2_EM)/lib/libpcre2-8.a \
+		$(YAJL_EM)/lib/libyajl_s.a \
 		-o $(MODSECURITY_PROXY_WASM_OUT)
 
 # Optional text form for debugging (requires wabt: apt install wabt / brew install wabt).

@@ -28,6 +28,11 @@ PCRE2_VERSION ?= pcre2-10.47
 # renovate: datasource=github-tags depName=PCRE2Project/pcre2 versioning=loose extractVersion=^pcre2-(?<version>.*)$ digest
 PCRE2_SHA ?= f454e231fe5006dd7ff8f4693fd2b8eb94333429
 
+# renovate: datasource=github-tags depName=lloyd/yajl versioning=semver
+YAJL_VERSION ?= 2.1.0
+# renovate: datasource=github-tags depName=lloyd/yajl versioning=semver digest
+YAJL_SHA ?= a0ecdde0c042b9256170f2f8890dd9451a4240aa
+
 # renovate: datasource=github-tags depName=coreruleset/coreruleset versioning=semver
 CRS_VERSION ?= v4.27.0
 

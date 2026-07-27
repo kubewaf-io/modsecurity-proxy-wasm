@@ -108,6 +108,74 @@ static std::string classicLogSanitize(std::string_view s, size_t max_len) {
   return out;
 }
 
+static int hexNibble(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+// Map Unicode fullwidth ASCII (U+FF01..U+FF5E) to ASCII 0x21..0x7E.
+// Needed so CRS XSS rules see "<script" after clients send fullwidth tags
+// (CRS 941110-7/8). libModSecurity's utf8toUnicode+urlDecodeUni path is
+// order-sensitive and can miss values that arrive already URL-decoded.
+static void normalizeFullwidthAsciiInPlace(std::string& s) {
+  if (s.size() < 3) {
+    return;
+  }
+  std::string out;
+  out.reserve(s.size());
+  for (size_t i = 0; i < s.size();) {
+    const auto b0 = static_cast<unsigned char>(s[i]);
+    // UTF-8 fullwidth: EF BC 81..BF → U+FF01..FF3F; EF BD 80..9E → U+FF40..FF5E
+    if (b0 == 0xEF && i + 2 < s.size()) {
+      const auto b1 = static_cast<unsigned char>(s[i + 1]);
+      const auto b2 = static_cast<unsigned char>(s[i + 2]);
+      int cp = -1;
+      if (b1 == 0xBC && b2 >= 0x81 && b2 <= 0xBF) {
+        cp = 0xFF00 + (b2 - 0x80);  // FF01..FF3F
+      } else if (b1 == 0xBD && b2 >= 0x80 && b2 <= 0x9E) {
+        cp = 0xFF40 + (b2 - 0x80);  // FF40..FF5E
+      }
+      if (cp >= 0xFF01 && cp <= 0xFF5E) {
+        out.push_back(static_cast<char>(cp - 0xFEE0));
+        i += 3;
+        continue;
+      }
+    }
+    // Percent-encoded fullwidth UTF-8: %EF%BC%9C → '<' (case-insensitive).
+    if (b0 == '%' && i + 8 < s.size() && s[i + 3] == '%' && s[i + 6] == '%') {
+      const int h0 = hexNibble(s[i + 1]);
+      const int h1 = hexNibble(s[i + 2]);
+      const int h2 = hexNibble(s[i + 4]);
+      const int h3 = hexNibble(s[i + 5]);
+      const int h4 = hexNibble(s[i + 7]);
+      const int h5 = hexNibble(s[i + 8]);
+      if (h0 >= 0 && h1 >= 0 && h2 >= 0 && h3 >= 0 && h4 >= 0 && h5 >= 0) {
+        const unsigned bA = static_cast<unsigned>((h0 << 4) | h1);
+        const unsigned bB = static_cast<unsigned>((h2 << 4) | h3);
+        const unsigned bC = static_cast<unsigned>((h4 << 4) | h5);
+        int cp = -1;
+        if (bA == 0xEF && bB == 0xBC && bC >= 0x81 && bC <= 0xBF) {
+          cp = 0xFF00 + static_cast<int>(bC - 0x80);
+        } else if (bA == 0xEF && bB == 0xBD && bC >= 0x80 && bC <= 0x9E) {
+          cp = 0xFF40 + static_cast<int>(bC - 0x80);
+        }
+        if (cp >= 0xFF01 && cp <= 0xFF5E) {
+          out.push_back(static_cast<char>(cp - 0xFEE0));
+          i += 9;
+          continue;
+        }
+      }
+    }
+    out.push_back(s[i]);
+    ++i;
+  }
+  if (out.size() != s.size() || out != s) {
+    s.swap(out);
+  }
+}
+
 // ModSecurity v3 headers
 #include "modsecurity/modsecurity.h"
 #include "modsecurity/rules_set.h"
@@ -693,7 +761,10 @@ void ModSecContext::appendBufferedRequestBody() {
   const size_t chunk_size = buffer_size - request_body_received_;
   auto body = getBufferBytes(WasmBufferType::HttpRequestBody, request_body_received_, chunk_size);
   if (body && body->size() > 0) {
-    transaction_->appendRequestBody(reinterpret_cast<const unsigned char*>(body->data()), body->size());
+    std::string chunk(body->data(), body->size());
+    // Fold fullwidth UTF-8 / %EF%BC%xx in bodies (form + JSON) for CRS XSS (941110-7).
+    normalizeFullwidthAsciiInPlace(chunk);
+    transaction_->appendRequestBody(reinterpret_cast<const unsigned char*>(chunk.data()), chunk.size());
     request_body_received_ += body->size();
   } else {
     request_body_received_ = buffer_size;
@@ -775,6 +846,8 @@ FilterHeadersStatus ModSecContext::onRequestHeaders(uint32_t, bool end_of_stream
   } else {
     getValue({"request", "headers", ":method"}, &method);
   }
+  // Fold fullwidth Unicode in path/query so ARGS from URI match CRS XSS regexes.
+  normalizeFullwidthAsciiInPlace(path);
   path_ = path;
   method_ = method;
 
@@ -812,7 +885,9 @@ FilterHeadersStatus ModSecContext::onRequestHeaders(uint32_t, bool end_of_stream
   if (auto headers_buf = getRequestHeaderPairs()) {
     for (auto& p : headers_buf->pairs()) {
       const std::string name = std::string(p.first);
-      const std::string value = std::string(p.second);
+      std::string value = std::string(p.second);
+      // Cookie names/values and other headers may carry fullwidth XSS (CRS 941110-8).
+      normalizeFullwidthAsciiInPlace(value);
       transaction_->addRequestHeader(name, value);
       if (name == "host" || name == "Host") {
         has_host = true;
@@ -910,7 +985,9 @@ FilterDataStatus ModSecContext::onRequestBody(size_t body_buffer_length, bool en
     const size_t chunk_size = body_buffer_length - request_body_received_;
     auto body = getBufferBytes(WasmBufferType::HttpRequestBody, request_body_received_, chunk_size);
     if (body && body->size() > 0) {
-      transaction_->appendRequestBody(reinterpret_cast<const unsigned char*>(body->data()), body->size());
+      std::string chunk(body->data(), body->size());
+      normalizeFullwidthAsciiInPlace(chunk);
+      transaction_->appendRequestBody(reinterpret_cast<const unsigned char*>(chunk.data()), chunk.size());
       request_body_received_ += body->size();
     } else {
       request_body_received_ = body_buffer_length;
