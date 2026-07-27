@@ -13,20 +13,20 @@ void ModSecMetrics::configure(const WafMetricOptions& options) {
   tx_count_ = 0;
   distinct_rule_metrics_ = 0;
   distinct_tag_metrics_ = 0;
+  label_suffix_.clear();
+  for (const auto& kv : options_.labels) {
+    label_suffix_.push_back('_');
+    label_suffix_.append(kv.first);
+    label_suffix_.push_back('=');
+    label_suffix_.append(kv.second);
+  }
   if (options_.enabled) {
     recordWasmMemory();
   }
 }
 
-std::string ModSecMetrics::labelSuffix() const {
-  std::string suffix;
-  for (const auto& kv : options_.labels) {
-    suffix.push_back('_');
-    suffix.append(kv.first);
-    suffix.push_back('=');
-    suffix.append(kv.second);
-  }
-  return suffix;
+const std::string& ModSecMetrics::labelSuffix() const {
+  return label_suffix_;
 }
 
 const char* ModSecMetrics::phaseNameFromRule(int rule_phase) {
@@ -103,7 +103,7 @@ void ModSecMetrics::incrementCoreCounter(const std::string& legacy_suffix,
   if (!options_.enabled) {
     return;
   }
-  const std::string suffix = labelSuffix();
+  const std::string& suffix = labelSuffix();
   incrementCounter(std::string("modsecurity_proxy_wasm.") + legacy_suffix + suffix);
   if (options_.dual_prefix) {
     incrementCounter(std::string("kubewaf_waf.") + product_suffix + suffix);
@@ -131,7 +131,7 @@ void ModSecMetrics::recordWasmMemory() {
     return;
   }
   const uint64_t heap_bytes = static_cast<uint64_t>(emscripten_get_heap_size());
-  const std::string suffix = labelSuffix();
+  const std::string& suffix = labelSuffix();
   setGauge(std::string("modsecurity_proxy_wasm.memory.wasm_heap_bytes") + suffix, heap_bytes);
   if (options_.dual_prefix) {
     setGauge(std::string("kubewaf_waf.memory.wasm_heap_bytes") + suffix, heap_bytes);
@@ -169,7 +169,7 @@ void ModSecMetrics::countTxInterruption(const char* phase, int64_t rule_id) {
     phase = "unknown";
   }
 
-  const std::string suffix = labelSuffix();
+  const std::string& suffix = labelSuffix();
   incrementCounter(std::string("modsecurity_proxy_wasm.tx.interruptions_phase=") + phase + suffix);
   if (options_.dual_prefix) {
     incrementCounter(std::string("kubewaf_waf.tx.interruptions_phase=") + phase + suffix);
@@ -200,7 +200,7 @@ void ModSecMetrics::countRuleMatch(int rule_phase, int severity, bool disruptive
     return;
   }
   const char* phase = phaseNameFromRule(rule_phase);
-  const std::string suffix = labelSuffix();
+  const std::string& suffix = labelSuffix();
 
   incrementCounter(std::string("modsecurity_proxy_wasm.rule.matches") + suffix);
   if (options_.dual_prefix) {

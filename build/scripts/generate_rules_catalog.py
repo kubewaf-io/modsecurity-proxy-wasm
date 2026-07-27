@@ -46,15 +46,27 @@ def wasm_safe_rule_conf(conf: str, rules_dir: Path) -> str:
     out: list[str] = []
     for line in conf.splitlines():
         stripped = line.lstrip()
-        if stripped.startswith("#"):
-            out.append(line)
+        # Drop comment-only / blank lines: smaller rodata + less work for RulesSet::load.
+        # (Keeps in-line SecLang content untouched — only full-line comments.)
+        if not stripped or stripped.startswith("#"):
             continue
         if "@rxFromFile" in line:
-            out.append("# wasm-disabled (no filesystem): " + line)
+            # Disabled in wasm (no filesystem regex corpora).
             continue
-        # Keep @pmFromFile as-is for runtime MEMFS resolution.
+        # Keep @pmFromFile as-is; basenames resolve via embedded catalog + patch.
         out.append(line)
     return "\n".join(out) + "\n"
+
+
+def slim_data_file(data: str) -> str:
+    """Strip comments/blank lines from CRS .data phrase lists (PmFromFile ignores them)."""
+    out: list[str] = []
+    for line in data.splitlines():
+        stripped = line.lstrip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        out.append(line.rstrip())
+    return "\n".join(out) + ("\n" if out else "")
 
 
 def patch_crs_setup(example: str) -> str:
@@ -212,7 +224,9 @@ def main() -> int:
     data_files = sorted(rules_dir.glob("*.data"))
     for path in data_files:
         virtual = f"{CRS_DATA_PREFIX}{path.name}"
-        assets.append((virtual, path.read_text(encoding="utf-8", errors="replace")))
+        assets.append(
+            (virtual, slim_data_file(path.read_text(encoding="utf-8", errors="replace")))
+        )
 
     conf_files = sorted(rules_dir.glob("*.conf"))
     if not conf_files:

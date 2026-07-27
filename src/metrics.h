@@ -37,12 +37,14 @@ class ModSecMetrics {
   void incrementCoreCounter(const std::string& legacy_suffix, const std::string& product_suffix);
   void setGauge(const std::string& name, uint64_t value);
   bool trackDistinct(std::string& name, size_t& distinct_count, size_t max_distinct);
-  std::string labelSuffix() const;
+  const std::string& labelSuffix() const;
   static const char* phaseNameFromRule(int rule_phase);
   static bool isInterestingRuleTag(std::string_view tag);
   static std::string sanitizeTagForMetric(std::string_view tag);
 
   WafMetricOptions options_;
+  // Cached once in configure() — labelSuffix() is on every counter hot path.
+  std::string label_suffix_;
   std::unordered_map<std::string, uint32_t> metric_ids_;
   uint64_t tx_count_{0};
   size_t distinct_rule_metrics_{0};

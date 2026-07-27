@@ -18,6 +18,8 @@
 #include "waf_config.h"
 #include "wasm_vfs.h"
 
+#include <emscripten/heap.h>
+
 static bool methodMayHaveBody(const std::string& method) {
   return method != "GET" && method != "HEAD" && method != "OPTIONS" && method != "TRACE";
 }
@@ -342,10 +344,14 @@ bool loadRuleChunk(const char* label, const char* data, std::size_t size, void* 
   // Always copy into a mutable buffer. RulesSet::load may mutate/parse in place;
   // zero-copy into read-only catalog/rodata has caused unreachable traps on some
   // custom SecRule text after a full CRS load.
+  // Peak during configure ≈ catalog rodata + this chunk + RulesSet graph. Drop the
+  // temporary as soon as load() returns so sequential CRS files do not stack copies.
   std::string chunk;
   chunk.reserve(size + 1);
   chunk.assign(data, size);
   int ret = rules->load(chunk.c_str(), ref);
+  chunk.clear();
+  chunk.shrink_to_fit();
   if (ret < 0) {
     err = rules->m_parserError.str();
     if (err.empty()) {
@@ -448,6 +454,7 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
     return true;
   }
 
+  metrics_.recordWasmMemory();
   {
     std::ostringstream fields;
     if (!plugin_options_.config_id.empty()) {
@@ -458,7 +465,8 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
     }
     fields << "\"metric_labels\":" << plugin_options_.metrics.labels.size()
            << ",\"per_rule_id\":" << (plugin_options_.metrics.per_rule_id ? "true" : "false")
-           << ",\"stats\":" << (plugin_options_.metrics.enabled ? "true" : "false");
+           << ",\"stats\":" << (plugin_options_.metrics.enabled ? "true" : "false")
+           << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(emscripten_get_heap_size());
     logJson(false, "config_applied", fields.str());
   }
   return true;

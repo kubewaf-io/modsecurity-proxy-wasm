@@ -41,14 +41,23 @@ MODSEC_CONFIGURE_FLAGS := \
 	--disable-debug-logs --disable-mutex-on-pm --without-lmdb --without-maxmind \
 	--without-ssdeep
 
-# Memory: full OWASP CRS load is heavy (regex compile + rule graph). 16MB/1MB stack
-# was too tight under Envoy V8 and aborted as "Uncaught RuntimeError: unreachable".
+# Memory (Envoy V8 Wasm linear memory is reserved *per worker VM*):
+# - alpha9 raised INITIAL 16→64MB and STACK 1→4MB after CRS load hit "unreachable".
+# - Steady-state CRS heap is typically well under 64MB; with ALLOW_MEMORY_GROWTH the
+#   engine can start smaller and grow during rule compile instead of reserving 64MB
+#   on every worker at VM create. 32MB initial + 2MB stack is the tuned compromise:
+#   enough headroom to leave configure, without 4× stack / 64MB baseline tax.
+# - MAXIMUM caps runaway growth (per-tx body buffers + regex state) below 512MB.
+# Override at link time if needed: make INITIAL_MEMORY=64MB STACK_SIZE=4MB ...
+INITIAL_MEMORY ?= 32MB
+MAXIMUM_MEMORY ?= 256MB
+STACK_SIZE     ?= 2MB
 EMSCRIPTEN_LINK_OPTS := --no-entry \
 	-sSTANDALONE_WASM -sEXPORTED_FUNCTIONS=_malloc -sFILESYSTEM=1 \
 	-sALLOW_MEMORY_GROWTH=1 \
-	-sINITIAL_MEMORY=64MB \
-	-sMAXIMUM_MEMORY=512MB \
-	-sSTACK_SIZE=4MB \
+	-sINITIAL_MEMORY=$(INITIAL_MEMORY) \
+	-sMAXIMUM_MEMORY=$(MAXIMUM_MEMORY) \
+	-sSTACK_SIZE=$(STACK_SIZE) \
 	-sDISABLE_EXCEPTION_CATCHING=1
 
 PLUGIN_SRCS := \
