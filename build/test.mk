@@ -71,6 +71,8 @@ test-fuzz: $(FUZZ_BUILD_DIR)/waf_config_fuzz
 test-bats: deps-test verify-getentropy-stub
 	@test -f $(WASM_OUT) || (echo "ERROR: $(WASM_OUT) not found. Run: make image" >&2; exit 1)
 	@test -x "$(BATS_BIN)" || (echo "ERROR: bats not found at $(BATS_BIN)" >&2; exit 1)
+	@chmod +x $(TEST_DIR)/integration/verify-v8-runtime.sh
+	WASM=$(WASM_OUT) $(TEST_DIR)/integration/verify-v8-runtime.sh
 	ENVOY_IMAGE=$(ENVOY_IMAGE) "$(BATS_BIN)" $(TEST_DIR)/integration/bats/
 
 test-perf-k6:
@@ -86,7 +88,9 @@ test-perf-k6-compare:
 test-perf-k6-ci:
 	@test -f $(WASM_OUT) || (echo "ERROR: $(WASM_OUT) not found. Run: make image" >&2; exit 1)
 	@chmod +x $(TEST_DIR)/perf/run-k6.sh $(TEST_DIR)/perf/collect-stats.sh \
-		$(TEST_DIR)/perf/finalize-memory.sh $(TEST_DIR)/perf/fetch-coraza-wasm.sh
+		$(TEST_DIR)/perf/finalize-memory.sh $(TEST_DIR)/perf/fetch-coraza-wasm.sh \
+		$(TEST_DIR)/integration/verify-v8-runtime.sh
+	WASM=$(WASM_OUT) $(TEST_DIR)/integration/verify-v8-runtime.sh
 	ENVOY_IMAGE=$(ENVOY_IMAGE) PERF_CI=1 $(TEST_DIR)/perf/run-k6.sh --ci --all-smoke
 
 test-perf-k6-keep:

@@ -2,8 +2,12 @@
 //
 // Signatures must match Emscripten's WASI/libc stubs used under LTO (emsdk 3.x).
 // Mismatch examples cause: wasm-ld: warning: function signature mismatch: __syscall_fchmod
+//
+// Unresolved __syscall_* become env imports that Envoy V8 rejects, e.g.:
+//   Failed to load Wasm module due to a missing import: env.__syscall_pipe
 
 #include <stddef.h>
+#include <stdint.h>
 
 int wordexp(const char *wordexp_wordlist, void *pwordexp, int flags) {
   (void)wordexp_wordlist;
@@ -44,6 +48,21 @@ int __syscall_chmod(const char *path, int mode) {
 int __syscall_unlinkat(int dirfd, const char *path, int flags) {
   (void)dirfd;
   (void)path;
+  (void)flags;
+  return -1;
+}
+
+// pipe(fd[2]) — Emscripten sig 'ip' (int (*)(intptr_t fdPtr)). Not available in Envoy.
+// libc may pull this via popen / stdio under FILESYSTEM=1; fail closed without host import.
+// __attribute__((used)): keep under LTO when the call graph only appears on some CI builds.
+__attribute__((used)) int __syscall_pipe(intptr_t fd) {
+  (void)fd;
+  return -1;
+}
+
+// pipe2(fd[2], flags)
+__attribute__((used)) int __syscall_pipe2(intptr_t fds, int flags) {
+  (void)fds;
   (void)flags;
   return -1;
 }
