@@ -106,19 +106,28 @@ envoy_wait_ready() {
 }
 
 envoy_wait_crs_loaded() {
+  # Pure-JSON plugin logs (alpha9+): success is "config_applied" after CRS includes;
+  # catalog readiness is "crs_data_ready". Fallback is "fallback_rules_loaded".
   local _
   for _ in $(seq 1 60); do
     local logs
     logs=$($CTR logs "$CONTAINER_NAME" 2>&1 || true)
-    if grep -F 'Minimal fallback rules loaded' <<<"$logs" >/dev/null 2>&1; then
+    if grep -E '"event"[[:space:]]*:[[:space:]]*"fallback_rules_loaded"|Minimal fallback rules loaded' \
+        <<<"$logs" >/dev/null 2>&1; then
       envoy_fail "FAIL: plugin fell back to minimal rules" 80
     fi
-    if grep -F 'CRS catalog loaded' <<<"$logs" >/dev/null 2>&1; then
+    if grep -E '"event"[[:space:]]*:[[:space:]]*"config_applied"' <<<"$logs" >/dev/null 2>&1; then
+      return 0
+    fi
+    # Older builds / partial startup signals.
+    if grep -E '"event"[[:space:]]*:[[:space:]]*"crs_data_ready"|CRS catalog loaded' \
+        <<<"$logs" >/dev/null 2>&1 \
+        && grep -E '"event"[[:space:]]*:[[:space:]]*"rules_loaded"' <<<"$logs" >/dev/null 2>&1; then
       return 0
     fi
     sleep 0.5
   done
-  envoy_fail "FAIL: expected CRS catalog load message in wasm logs" 80
+  envoy_fail "FAIL: expected CRS config_applied (or crs_data_ready) in wasm logs" 80
 }
 
 envoy_assert_v8_runtime() {

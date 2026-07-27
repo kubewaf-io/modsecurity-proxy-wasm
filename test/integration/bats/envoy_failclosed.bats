@@ -29,7 +29,12 @@ setup_file() {
 
   [ "$bad_status" != "timeout" ]
   [ "$bad_status" = "1" ]
-  grep -F 'fail-closed' <<<"$bad_logs" >/dev/null
-  ! grep -F 'Minimal fallback rules loaded' <<<"$bad_logs" >/dev/null
-  ! grep -F 'CRS catalog loaded' <<<"$bad_logs" >/dev/null
+  # Pure-JSON logs: fail_closed:true on config_load_failed / configure_failed.
+  # Keep legacy text match for older wasm artifacts in mixed CI caches.
+  grep -E 'fail-closed|"fail_closed"[[:space:]]*:[[:space:]]*true|config_load_failed|configure_failed' \
+    <<<"$bad_logs" >/dev/null
+  ! grep -E '"event"[[:space:]]*:[[:space:]]*"fallback_rules_loaded"|Minimal fallback rules loaded' \
+    <<<"$bad_logs" >/dev/null
+  ! grep -E '"event"[[:space:]]*:[[:space:]]*"config_applied"|CRS catalog loaded' \
+    <<<"$bad_logs" >/dev/null
 }
