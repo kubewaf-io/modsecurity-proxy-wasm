@@ -5,12 +5,13 @@
     "customManagers:makefileVersions"
   ],
   "ignorePaths": [
-    "!test/perf/versions.env",
-    "!test/perf/requirements-charts.txt",
-    "!test/perf/docker-compose.k6.yml",
-    "!test/install-test-tools.sh",
-    "!test/regression/ftw/docker-compose.yml",
-    "!test/regression/run-ftw.sh"
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/examples/**",
+    "**/__tests__/**",
+    "**/tests/**",
+    "**/__fixtures__/**"
   ],
   "pinDigests": true,
   "packageRules": [
