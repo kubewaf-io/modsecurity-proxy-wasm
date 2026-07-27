@@ -641,9 +641,28 @@ bool applyJsonConfig(const std::string& json, RuleChunkLoader loader, void* user
     return false;
   }
 
+  // Flatten multi-line directive strings into physical lines. Plain JSON arrays
+  // may carry one ConvertToSecLangString blob per SecRule (comment + rule,
+  // parent+child chain, rule+SecMarker). Without flattening:
+  //  - comment-prefixed blobs are skipped entirely (leading '#')
+  //  - multi-line chains leave pending_chain stuck true (',chain"' still in blob)
+  // Gzip payloads are already line-split in loadDirectiveList; re-splitting is
+  // idempotent for single-line entries.
+  std::vector<std::string> lines;
+  lines.reserve(directives.size() * 2);
+  for (const auto& raw : directives) {
+    std::vector<std::string> parts = splitDirectiveLines(raw);
+    for (auto& p : parts) {
+      lines.push_back(std::move(p));
+    }
+  }
+
   std::set<std::string> seen;
   std::string inline_batch;
   inline_batch.reserve(8192);
+  // Keep each loadRules chunk modest. Large Path B SecLang batches have trapped
+  // Envoy V8 as "Uncaught RuntimeError: unreachable" during msc_rules_add.
+  constexpr std::size_t kMaxInlineChunkBytes = 4096;
 
   auto flushInline = [&]() -> bool {
     if (inline_batch.empty()) {
@@ -656,19 +675,88 @@ bool applyJsonConfig(const std::string& json, RuleChunkLoader loader, void* user
     return true;
   };
 
-  for (const auto& raw : directives) {
-    std::string line = trim(raw);
+  // When the last accepted line requested a chain continuation, do not flush
+  // until the next non-empty SecRule/SecAction (chain child) is appended —
+  // splitting parent/child across msc_rules_add calls has trapped V8.
+  bool pending_chain = false;
+
+  auto is_file_phrase_op = [](const std::string& line) -> bool {
+    // @pmFromFile / @ipMatchFromFile build large automata; loading them in the
+    // same msc_rules_add batch as many other Path B SecRules has caused Envoy
+    // V8 "unreachable" traps. Isolate each such rule in its own load chunk.
+    return line.find("@pmFromFile") != std::string::npos ||
+           line.find("@ipMatchFromFile") != std::string::npos;
+  };
+
+  auto line_requests_chain = [](const std::string& line) -> bool {
+    // Match chain as a whole action token: ,chain" or ,chain, or "chain,
+    return line.find(",chain\"") != std::string::npos ||
+           line.find(",chain,") != std::string::npos ||
+           line.find("\"chain\"") != std::string::npos ||
+           line.find(",chain\n") != std::string::npos ||
+           (line.size() >= 6 && line.compare(line.size() - 6, 6, ",chain") == 0);
+  };
+
+  for (const auto& line_raw : lines) {
+    std::string line = trim(line_raw);
     if (line.empty() || line.rfind("#", 0) == 0) continue;
 
     if (line.rfind("Include ", 0) == 0) {
+      if (pending_chain) {
+        // Orphan chain: still flush what we have and continue (ModSecurity will error).
+        pending_chain = false;
+      }
       if (!flushInline()) return false;
       std::string target = trim(line.substr(8));
       if (!resolveIncludeLoad(target, loader, user, seen, error)) return false;
       continue;
     }
 
+    const bool phrase_file = is_file_phrase_op(line);
+    const bool is_chain_parent = !pending_chain && line_requests_chain(line);
+
+    // Phrase-file operators: load in isolation (flush before and after).
+    if (phrase_file) {
+      if (pending_chain) {
+        // Unusual: chain parent then @pmFromFile child — keep together.
+      } else if (!flushInline()) {
+        return false;
+      }
+      inline_batch.append(line);
+      inline_batch.push_back('\n');
+      pending_chain = line_requests_chain(line);
+      if (!pending_chain) {
+        if (!flushInline()) return false;
+      }
+      continue;
+    }
+
+    // Isolate SecRule chains (parent + children) in their own msc_rules_add
+    // chunk. Path B REQUEST-949 rule 949111 (deny+chain) loaded in the same
+    // batch as many setvar score rules has trapped Envoy V8 as "unreachable".
+    // Keep parent+children together; flush before the parent and after the
+    // last child (line without chain).
+    if (is_chain_parent) {
+      if (!flushInline()) return false;
+    } else if (!inline_batch.empty() && !pending_chain &&
+               inline_batch.size() + line.size() + 1 > kMaxInlineChunkBytes) {
+      // Single oversize line still loads alone (cannot split mid-directive),
+      // unless we are holding a chain parent that must stay with its child.
+      if (!flushInline()) return false;
+    }
+
     inline_batch.append(line);
     inline_batch.push_back('\n');
+    const bool was_pending = pending_chain || is_chain_parent;
+    pending_chain = line_requests_chain(line);
+    if (was_pending && !pending_chain) {
+      // Completed chain (final child has no chain action) — load in isolation.
+      if (!flushInline()) return false;
+      continue;
+    }
+    if (!pending_chain && inline_batch.size() >= kMaxInlineChunkBytes) {
+      if (!flushInline()) return false;
+    }
   }
 
   return flushInline();

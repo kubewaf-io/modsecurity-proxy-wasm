@@ -44,12 +44,13 @@ MODSEC_CONFIGURE_FLAGS := \
 	--disable-debug-logs --disable-mutex-on-pm --without-lmdb --without-maxmind \
 	--without-ssdeep
 
-# Memory: full OWASP CRS load is heavy (regex compile + rule graph). 16MB/1MB stack
-# was too tight under Envoy V8 and aborted as "Uncaught RuntimeError: unreachable".
+# Memory: full OWASP CRS / Path B SecRules + @pmFromFile automata are heavy.
+# 64MB initial was tight under Envoy V8 (exceptions off → bad_alloc as unreachable).
+# Do not put # comments inside this continued assignment — make strips them badly.
 EMSCRIPTEN_LINK_OPTS := --no-entry \
 	-sSTANDALONE_WASM -sEXPORTED_FUNCTIONS=_malloc -sFILESYSTEM=1 \
 	-sALLOW_MEMORY_GROWTH=1 \
-	-sINITIAL_MEMORY=64MB \
+	-sINITIAL_MEMORY=128MB \
 	-sMAXIMUM_MEMORY=512MB \
 	-sSTACK_SIZE=4MB \
 	-sDISABLE_EXCEPTION_CATCHING=1 \
