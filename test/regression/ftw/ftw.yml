@@ -38,6 +38,17 @@ testoverride:
     '932239-29': 'Referer header sanitized by Envoy'
     '941101-1': 'Referer header sanitized by Envoy'
     '941110-4': 'Referer header sanitized by Envoy'
+    # XSS in Referer — same Envoy Referer sanitization as 941101-1 / 941110-4.
+    '941120-49': 'Referer header sanitized by Envoy (onclick XSS payload)'
+    '941120-50': 'Referer header sanitized by Envoy (onmouseover XSS payload)'
+    # Fullwidth / unicode script tags need t:utf8toUnicode folding; libModSecurity
+    # does not map these to ASCII the way Apache mod_security2 + CRS expect.
+    '941110-7': 'Fullwidth unicode XSS; utf8toUnicode transform gap in libModSecurity'
+    '941110-8': 'Fullwidth unicode XSS in Cookie name; utf8toUnicode transform gap'
+    # 941210 JSON payloads need ARGS from JSON body processor; libModSecurity is
+    # built --without-yajl so JSON REQBODY_PROCESSOR is unavailable in this wasm.
+    '941210-4': 'JSON body XSS; no yajl JSON parser in wasm ModSecurity build'
+    '941210-5': 'JSON body XSS; no yajl JSON parser in wasm ModSecurity build'
     '949110-4': 'Related to 920100. Invalid HTTP method rejected by Envoy'
 
     # modsecurity-proxy-wasm crafts Host from :authority (same as coraza-proxy-wasm).

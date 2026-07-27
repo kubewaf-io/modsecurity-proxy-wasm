@@ -344,14 +344,10 @@ bool loadRuleChunk(const char* label, const char* data, std::size_t size, void* 
   // Always copy into a mutable buffer. RulesSet::load may mutate/parse in place;
   // zero-copy into read-only catalog/rodata has caused unreachable traps on some
   // custom SecRule text after a full CRS load.
-  // Peak during configure ≈ catalog rodata + this chunk + RulesSet graph. Drop the
-  // temporary as soon as load() returns so sequential CRS files do not stack copies.
   std::string chunk;
   chunk.reserve(size + 1);
   chunk.assign(data, size);
   int ret = rules->load(chunk.c_str(), ref);
-  chunk.clear();
-  chunk.shrink_to_fit();
   if (ret < 0) {
     err = rules->m_parserError.str();
     if (err.empty()) {
