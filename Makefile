@@ -23,9 +23,9 @@ MODSECURITY_VERSION ?= v3.0.15
 # renovate: datasource=github-tags depName=owasp-modsecurity/ModSecurity versioning=semver digest
 MODSECURITY_SHA ?= 0fb4aff98b4980cf6426697d5605c424e3d5bb60
 
-# renovate: datasource=github-tags depName=PCRE2Project/pcre2
+# renovate: datasource=github-tags depName=PCRE2Project/pcre2 versioning=loose extractVersion=^pcre2-(?<version>.*)$
 PCRE2_VERSION ?= pcre2-10.47
-# renovate: datasource=github-tags depName=PCRE2Project/pcre2 digest
+# renovate: datasource=github-tags depName=PCRE2Project/pcre2 versioning=loose extractVersion=^pcre2-(?<version>.*)$ digest
 PCRE2_SHA ?= f454e231fe5006dd7ff8f4693fd2b8eb94333429
 
 # renovate: datasource=github-tags depName=coreruleset/coreruleset versioning=semver

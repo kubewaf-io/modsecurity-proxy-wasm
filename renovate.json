@@ -21,9 +21,11 @@
       "groupName": "modsecurity"
     },
     {
-      "description": "Group PCRE2 tag and commit SHA",
+      "description": "Group PCRE2 tag and commit SHA; tags are pcre2-MAJOR.MINOR",
       "matchDepNames": ["PCRE2Project/pcre2"],
-      "groupName": "pcre2"
+      "groupName": "pcre2",
+      "extractVersion": "^pcre2-(?<version>.*)$",
+      "versioning": "loose"
     },
     {
       "description": "Group proxy-wasm-cpp-sdk across Makefile, shell.nix, and versions.env",
@@ -36,9 +38,10 @@
       "groupName": "envoy"
     },
     {
-      "description": "Group coraza-proxy-wasm release version and zip checksum",
+      "description": "Group coraza-proxy-wasm release version (zip checksum is manual)",
       "matchDepNames": ["corazawaf/coraza-proxy-wasm"],
-      "groupName": "coraza-proxy-wasm"
+      "groupName": "coraza-proxy-wasm",
+      "pinDigests": false
     },
     {
       "description": "Pin Debian base image digests in Dockerfiles",
@@ -61,7 +64,7 @@
         "/^Makefile$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+))?\\s*\\n[A-Z0-9_]+_VERSION \\?= (?<currentValue>[^\\s\\n]+)\\s*\\n# renovate: datasource=(?:[^\\s]+) depName=(?:[^\\s]+?)(?: versioning=(?:[^\\s]+))? digest\\s*\\n[A-Z0-9_]+_SHA \\?= (?<currentDigest>[a-f0-9]{40})"
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+))?(?: extractVersion=(?<extractVersion>[^\\s]+))?\\s*\\n[A-Z0-9_]+_VERSION \\?= (?<currentValue>[^\\s\\n]+)\\s*\\n# renovate: datasource=(?:[^\\s]+) depName=(?:[^\\s]+?)(?: versioning=(?:[^\\s]+))?(?: extractVersion=(?:[^\\s]+))? digest\\s*\\n[A-Z0-9_]+_SHA \\?= (?<currentDigest>[a-f0-9]{40})"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
     },
@@ -78,13 +81,25 @@
     },
     {
       "customType": "regex",
+      "description": "Docker image pins in Makefile (ENVOY_IMAGE=repo:tag → currentValue is tag only)",
+      "managerFilePatterns": [
+        "/^Makefile$/"
+      ],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>docker) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+))?\\s*\\n[A-Z0-9_]+_IMAGE \\?= [^:\\s\\n]+:(?<currentValue>[^\\s\\n]+)"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}docker{{/if}}"
+    },
+    {
+      "customType": "regex",
       "description": "Dependency pins in build/deps/versions.env (mirror of Makefile)",
       "managerFilePatterns": [
         "/build/deps/versions\\.env$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+))?\\s*\\n[A-Z0-9_]+_VERSION=(?<currentValue>[^\\s\\n]+)\\s*\\n# renovate: datasource=(?:[^\\s]+) depName=(?:[^\\s]+?)(?: versioning=(?:[^\\s]+))? digest\\s*\\n[A-Z0-9_]+_SHA=(?<currentDigest>[a-f0-9]{40})",
-        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+))?\\s*\\n[A-Z0-9_]+=(?<currentValue>[^\\s\\n]+)"
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+))?(?: extractVersion=(?<extractVersion>[^\\s]+))?\\s*\\n[A-Z0-9_]+_VERSION=(?<currentValue>[^\\s\\n]+)\\s*\\n# renovate: datasource=(?:[^\\s]+) depName=(?:[^\\s]+?)(?: versioning=(?:[^\\s]+))?(?: extractVersion=(?:[^\\s]+))? digest\\s*\\n[A-Z0-9_]+_SHA=(?<currentDigest>[a-f0-9]{40})",
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+))?(?: extractVersion=(?<extractVersion>[^\\s]+))?\\s*\\n[A-Z0-9_]+_VERSION=(?<currentValue>[^\\s\\n]+)",
+        "# renovate: datasource=(?<datasource>docker) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+))?\\s*\\n[A-Z0-9_]+_IMAGE=[^:\\s\\n]+:(?<currentValue>[^\\s\\n]+)"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
     },
@@ -101,12 +116,11 @@
     },
     {
       "customType": "regex",
-      "description": "coraza-proxy-wasm perf comparison pins (version + zip digest)",
+      "description": "coraza-proxy-wasm release version only (zip SHA256 is manual; github-releases digests are not asset hashes)",
       "managerFilePatterns": [
         "/test/perf/versions\\.env$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+))?\\s*\\nCORAZA_VERSION=(?<currentValue>[^\\s\\n]+)\\s*\\n# renovate: datasource=(?:[^\\s]+) depName=(?:[^\\s]+?)(?: versioning=(?:[^\\s]+))? digest\\s*\\nCORAZA_ZIP_SHA256=(?<currentDigest>[a-f0-9]{64})",
         "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+))?\\s*\\nCORAZA_VERSION=(?<currentValue>[^\\s\\n]+)"
       ],
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver{{/if}}"
@@ -125,24 +139,22 @@
     },
     {
       "customType": "regex",
-      "description": "Docker images in test compose files and regression scripts",
+      "description": "Docker image tags in test compose files (currentValue is tag only, not image:tag)",
       "managerFilePatterns": [
         "/test/perf/docker-compose\\.k6\\.yml$/",
-        "/test/regression/ftw/docker-compose\\.yml$/",
-        "/test/regression/run-ftw\\.sh$/"
+        "/test/regression/ftw/docker-compose\\.yml$/"
       ],
       "matchStrings": [
-        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+?))?\\s*\\n\\s+image: (?<currentValue>ghcr\\.io/[^\\s\\n]+)",
-        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+?))?\\s*\\n\\s+image: (?<currentValue>alpine:[^\\s\\n]+)",
-        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+?))?\\s*\\n\\s+image: \\$\\{K6_IMAGE:-(?<currentValue>grafana/k6:[^}]+)\\}",
-        "docker\\.io/library/(?<depName>alpine):(?<currentValue>[^\\s\"]+)"
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>ghcr\\.io/[^\\s]+?)(?: versioning=(?<versioning>[^\\s]+?))?\\s*\\n\\s+image: ghcr\\.io/[^:\\s]+:(?<currentValue>[^\\s\\n]+)",
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>alpine)(?: versioning=(?<versioning>[^\\s]+?))?\\s*\\n\\s+image: alpine:(?<currentValue>[^\\s\\n]+)",
+        "# renovate: datasource=(?<datasource>[^\\s]+) depName=(?<depName>grafana/k6)(?: versioning=(?<versioning>[^\\s]+?))?\\s*\\n\\s+image: \\$\\{K6_IMAGE:-grafana/k6:(?<currentValue>[^}]+)\\}"
       ],
       "datasourceTemplate": "docker",
       "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}docker{{/if}}"
     },
     {
       "customType": "regex",
-      "description": "Hardcoded Envoy image in GitHub workflow run steps",
+      "description": "Hardcoded Envoy image tag in GitHub workflow run steps",
       "managerFilePatterns": [
         "/\\.github/workflows/.+\\.ya?ml$/"
       ],
