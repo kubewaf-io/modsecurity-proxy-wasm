@@ -112,7 +112,6 @@ test-perf-release-compare:
 		$(TEST_DIR)/perf/run-k6.sh $(TEST_DIR)/perf/collect-stats.sh $(TEST_DIR)/perf/finalize-memory.sh
 	@CURRENT_TAG="$${GITHUB_REF_NAME:-$$(git describe --tags --abbrev=0 2>/dev/null || true)}" \
 		GITHUB_REPOSITORY="$${GITHUB_REPOSITORY:-}" \
-		GITHUB_TOKEN="$${GITHUB_TOKEN:-$${GH_TOKEN:-}}" \
 		PERF_CI=1 ENVOY_IMAGE=$(ENVOY_IMAGE) \
 		$(TEST_DIR)/perf/run-release-compare.sh
 
