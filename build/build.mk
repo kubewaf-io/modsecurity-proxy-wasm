@@ -199,9 +199,10 @@ $(STAMPS_DIR)/crs:
 	git clone --depth 1 --branch "$(CRS_VERSION)" https://github.com/coreruleset/coreruleset.git $(CRS_DIR)
 	touch $@
 
-# Catalog mode: path-b (default) embeds helpers + @crs-data only (no CRS rule confs).
-# full embeds Path A @owasp_crs/*.conf + @crs-setup-conf (larger wasm).
-CATALOG_MODE ?= path-b
+# Catalog is path-b only: helpers + @crs-data phrase lists (no CRS rule confs).
+# CRS rules are supplied at runtime as structured SecRule CRs / inline SecLang (Path B).
+# Do not reintroduce CATALOG_MODE=full here — Path A embedding is intentionally removed.
+CATALOG_MODE := path-b
 
 $(GENERATED_CC) $(GENERATED_H): $(STAMPS_DIR)/crs \
 		$(BUILD_RULES_DIR)/demo-conf.conf \
@@ -210,7 +211,6 @@ $(GENERATED_CC) $(GENERATED_H): $(STAMPS_DIR)/crs \
 		$(BUILD_SCRIPTS_DIR)/generate_rules_catalog.py
 	@mkdir -p $(BUILD_DIR)/src/generated
 	python3 $(BUILD_SCRIPTS_DIR)/generate_rules_catalog.py \
-		--mode $(CATALOG_MODE) \
 		--crs $(CRS_DIR) \
 		--demo $(BUILD_RULES_DIR)/demo-conf.conf \
 		--ftw $(BUILD_RULES_DIR)/ftw-config.conf \

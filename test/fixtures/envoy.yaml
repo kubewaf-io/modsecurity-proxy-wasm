@@ -64,8 +64,8 @@ static_resources:
                   code:
                     local:
                       filename: "/etc/modsecurity-proxy-wasm.wasm"
-                # JSON WAF config: directives_map resolves virtual includes baked in at build
-                # (@demo-conf, @crs-setup-conf, @owasp_crs/*.conf = full OWASP CRS).
+                # Path B: helpers from catalog (@demo-conf); detection rules as inline SecLang
+                # (same shape as structured SecRule CRs from the operator — no embedded CRS confs).
                 configuration:
                   "@type": "type.googleapis.com/google.protobuf.StringValue"
                   value: |
@@ -75,9 +75,8 @@ static_resources:
                           "Include @demo-conf",
                           "SecDebugLogLevel 9",
                           "SecRuleEngine On",
-                          "Include @crs-setup-conf",
-                          "Include @owasp_crs/REQUEST-901-INITIALIZATION.conf",
-                          "Include @owasp_crs/*.conf"
+                          "SecRule ARGS|ARGS_NAMES|REQUEST_COOKIES|REQUEST_COOKIES_NAMES|REQUEST_HEADERS|REQUEST_HEADERS_NAMES \"@rx (?i)(?:<script|javascript:|onerror\\s*=)\" \"id:100001,phase:2,block,deny,status:403,log,msg:'path-b smoke XSS',tag:'attack-xss'\"",
+                          "SecRule ARGS|ARGS_NAMES|REQUEST_COOKIES|REQUEST_BODY \"@rx (?i)(?:union\\s+select|select.+from|insert\\s+into|drop\\s+table)\" \"id:100002,phase:2,block,deny,status:403,log,msg:'path-b smoke SQLi',tag:'attack-sqli'\""
                         ]
                       },
                       "default_directives": "default",

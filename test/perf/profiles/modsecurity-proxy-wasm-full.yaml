@@ -1,4 +1,5 @@
-# Full OWASP CRS — production-like perf profile (SecDebugLogLevel 0).
+# Path B perf: same inline smoke rules as coraza-full (no CRS). Body access + 2 SecRules.
+# Profile name kept as modsecurity-proxy-wasm-full for CI/script compatibility.
 stats_config:
   stats_tags:
     - tag_name: phase
@@ -56,18 +57,18 @@ static_resources:
                     {
                       "directives_map": {
                         "default": [
-                          "Include @demo-conf",
+                          "SecRequestBodyAccess On",
+                          "SecResponseBodyAccess On",
                           "SecDebugLogLevel 0",
                           "SecRuleEngine On",
-                          "Include @crs-setup-conf",
-                          "Include @owasp_crs/REQUEST-901-INITIALIZATION.conf",
-                          "Include @owasp_crs/*.conf"
+                          "SecRule ARGS|ARGS_NAMES|REQUEST_COOKIES|REQUEST_COOKIES_NAMES|REQUEST_HEADERS|REQUEST_HEADERS_NAMES \"@rx (?i)(?:<script|javascript:|onerror\\s*=)\" \"id:100001,phase:2,block,deny,status:403,log,msg:'path-b smoke XSS',tag:'attack-xss'\"",
+                          "SecRule ARGS|ARGS_NAMES|REQUEST_COOKIES|REQUEST_BODY \"@rx (?i)(?:union\\s+select|select.+from|insert\\s+into|drop\\s+table)\" \"id:100002,phase:2,block,deny,status:403,log,msg:'path-b smoke SQLi',tag:'attack-sqli'\""
                         ]
                       },
                       "default_directives": "default",
                       "metric_labels": {
                         "owner": "modsecurity-proxy-wasm",
-                        "identifier": "perf-full"
+                        "identifier": "perf-path-b"
                       }
                     }
           - name: envoy.filters.http.router

@@ -10,6 +10,10 @@ set -euo pipefail
 #
 # Requires dist/modsecurity-proxy-wasm.wasm built with embedded @ftw-conf (build/rules/ftw-config.conf).
 # Rebuild after changing FTW overlays: make modsecurity-proxy-wasm.wasm  (or make image)
+#
+# NOTE: This harness still uses Path A Include @owasp_crs* in ftw/envoy.yaml, but the
+# wasm catalog is path-b only (no embedded CRS confs). Use the monorepo Path B FTW
+# target instead (make test-e2e-ftw-path-b). Engine-local Path A FTW is not supported.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -27,9 +31,13 @@ FTW_CLOUDMODE="${FTW_CLOUDMODE:-false}"
 FTW_INCLUDE="${FTW_INCLUDE:-}"
 
 usage() {
-  sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 }
+
+echo "ERROR: engine-local go-ftw expects Path A embedded CRS, but this build is path-b only." >&2
+echo "       Use monorepo: make test-e2e-ftw-path-b (structured SecRule CRs)." >&2
+exit 1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

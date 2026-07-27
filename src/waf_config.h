@@ -18,10 +18,8 @@
 //   @demo-conf         — demo overlay
 //   @ftw-conf          — go-ftw harness
 //   @crs-data/*.data   — CRS phrase lists for @pmFromFile (always embedded)
-//   @crs-setup-conf    — CRS setup (catalog mode full / Path A only)
-//   @owasp_crs/*.conf  — embedded OWASP CRS rules (catalog mode full / Path A only)
-// Default catalog mode is path-b: CRS rule confs are NOT embedded; use structured
-// SecRule CRs. Rebuild with CATALOG_MODE=full for Path A (crsEnable + Include).
+// Catalog is path-b only: CRS rule confs are NOT embedded. Use structured SecRule
+// CRs / inline SecLang. Include @crs-setup-conf / @owasp_crs* fail closed with a hint.
 const char* defaultWafJsonConfig();
 bool expandWafConfiguration(const std::string& config, std::string& rules_out, std::string& error);
 

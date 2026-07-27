@@ -598,15 +598,14 @@ bool loadOwaspCrsGlob(const modsecurity_proxy_wasm_rules::RuleAsset& asset, void
   return loadAsset(ctx->loader, ctx->user, asset, *ctx->seen, *ctx->error);
 }
 
-// Path A virtual includes are only present when the rules catalog was built with
-// CATALOG_MODE=full. Default path-b builds omit CRS rule confs (structured SecRules
-// supply them from the cluster).
+// Path A virtual includes are never embedded (path-b catalog only).
+// Structured SecRule CRs / inline SecLang supply CRS rules from the cluster.
 std::string pathACatalogHint(const std::string& target) {
   const char* mode = modsecurity_proxy_wasm_rules::catalog_mode();
   if (mode == nullptr) mode = "unknown";
   return "virtual include " + target + " not in catalog (catalog_mode=" + std::string(mode) +
-         "). Path B builds omit CRS rule confs; use structured SecRule CRs "
-         "(crsEnable:false) or rebuild wasm with CATALOG_MODE=full for Path A.";
+         "). Path B builds omit CRS rule confs; supply rules as structured SecRule CRs "
+         "(crsEnable:false) or inline SecLang in directives_map.";
 }
 
 bool resolveIncludeLoad(const std::string& target, RuleChunkLoader loader, void* user,

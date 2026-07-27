@@ -14,10 +14,10 @@ Coraza wasm is downloaded automatically to `test/perf/.coraza/main.wasm` (pinned
 ## Quick start
 
 ```bash
-# modsecurity-proxy-wasm full CRS only
+# modsecurity-proxy-wasm path-b (profile name: modsecurity-proxy-wasm-full)
 make test-perf-k6
 
-# Side-by-side: modsecurity-proxy-wasm-full vs coraza-full (same scenario)
+# Side-by-side: modsecurity-proxy-wasm vs coraza (same scenario)
 make test-perf-k6-compare
 
 # coraza only
@@ -33,13 +33,13 @@ PERF_PROFILE=baseline make test-perf-k6
 |---------|-----|--------|------------|
 | `baseline` | none | Envoy router only | — |
 | `wasm-minimal` | modsecurity-proxy-wasm | `SecRuleEngine Off` | `coraza-minimal` |
-| `modsecurity-proxy-wasm-full` | modsecurity-proxy-wasm | Full CRS, debug off | `coraza-full` |
+| `modsecurity-proxy-wasm-full` | modsecurity-proxy-wasm | Path B helpers + same inline smoke rules, debug off | `coraza-full` |
 | `coraza-minimal` | coraza-proxy-wasm | `SecRuleEngine Off` | `wasm-minimal` |
-| `coraza-full` | coraza-proxy-wasm | Embedded CRS v4.14, debug off | `modsecurity-proxy-wasm-full` |
+| `coraza-full` | coraza-proxy-wasm | Same inline smoke rules (no CRS), debug off | `modsecurity-proxy-wasm-full` |
 
 Configs: `test/perf/profiles/`.
 
-**Note:** CRS versions differ (modsecurity-proxy-wasm pins v4.27 at build time; coraza 0.6.0 embeds v4.14). Treat comparisons as directional, not byte-identical.
+**Note:** Both “full” profiles use the **same two inline SecRules** (XSS + SQLi smoke). Neither loads OWASP CRS, so latency/throughput compare engines under equal rule work — not full CRS coverage.
 
 ## Compare modsecurity-proxy-wasm vs coraza
 
