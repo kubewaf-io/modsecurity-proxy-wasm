@@ -37,7 +37,7 @@ YAJL_SHA ?= a0ecdde0c042b9256170f2f8890dd9451a4240aa
 CRS_VERSION ?= v4.27.0
 
 # renovate: datasource=docker depName=ghcr.io/coreruleset/go-ftw
-GO_FTW_VERSION ?= 2.4.0
+GO_FTW_VERSION ?= 2.5.0
 
 # renovate: datasource=docker depName=envoyproxy/envoy versioning=loose
 ENVOY_IMAGE ?= envoyproxy/envoy:v1.38-latest
