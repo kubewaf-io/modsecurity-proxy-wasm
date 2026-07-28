@@ -34,7 +34,7 @@ YAJL_VERSION ?= 2.1.0
 YAJL_SHA ?= a0ecdde0c042b9256170f2f8890dd9451a4240aa
 
 # renovate: datasource=github-tags depName=coreruleset/coreruleset versioning=semver
-CRS_VERSION ?= v4.27.0
+CRS_VERSION ?= v4.28.0
 
 # renovate: datasource=docker depName=ghcr.io/coreruleset/go-ftw
 GO_FTW_VERSION ?= 2.5.0
