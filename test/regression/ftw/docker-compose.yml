@@ -1,7 +1,9 @@
 services:
   albedo:
     # renovate: datasource=docker depName=ghcr.io/coreruleset/albedo
-    image: ghcr.io/coreruleset/albedo:0.2.0
+    # v0.3.0: --json backend logs (inspect/reflect); go-ftw still reads envoy.log for rule_match.
+    image: ghcr.io/coreruleset/albedo:0.3.0
+    command: ["--json"]
 
   chown:
     # renovate: datasource=docker depName=alpine
