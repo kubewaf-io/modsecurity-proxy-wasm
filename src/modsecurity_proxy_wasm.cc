@@ -119,12 +119,23 @@ static int hexNibble(char c) {
 // Needed so CRS XSS rules see "<script" after clients send fullwidth tags
 // (CRS 941110-7/8). libModSecurity's utf8toUnicode+urlDecodeUni path is
 // order-sensitive and can miss values that arrive already URL-decoded.
+// Fast path: pure ASCII without '%' cannot contain fullwidth or %EF%BC sequences.
+static bool mayContainFullwidth(const std::string& s) {
+  for (unsigned char c : s) {
+    if (c >= 0x80 || c == static_cast<unsigned char>('%')) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static void normalizeFullwidthAsciiInPlace(std::string& s) {
-  if (s.size() < 3) {
+  if (s.size() < 3 || !mayContainFullwidth(s)) {
     return;
   }
   std::string out;
   out.reserve(s.size());
+  bool changed = false;
   for (size_t i = 0; i < s.size();) {
     const auto b0 = static_cast<unsigned char>(s[i]);
     // UTF-8 fullwidth: EF BC 81..BF → U+FF01..FF3F; EF BD 80..9E → U+FF40..FF5E
@@ -140,6 +151,7 @@ static void normalizeFullwidthAsciiInPlace(std::string& s) {
       if (cp >= 0xFF01 && cp <= 0xFF5E) {
         out.push_back(static_cast<char>(cp - 0xFEE0));
         i += 3;
+        changed = true;
         continue;
       }
     }
@@ -164,6 +176,7 @@ static void normalizeFullwidthAsciiInPlace(std::string& s) {
         if (cp >= 0xFF01 && cp <= 0xFF5E) {
           out.push_back(static_cast<char>(cp - 0xFEE0));
           i += 9;
+          changed = true;
           continue;
         }
       }
@@ -171,7 +184,7 @@ static void normalizeFullwidthAsciiInPlace(std::string& s) {
     out.push_back(s[i]);
     ++i;
   }
-  if (out.size() != s.size() || out != s) {
+  if (changed) {
     s.swap(out);
   }
 }
@@ -231,6 +244,8 @@ private:
   bool response_body_interrupted_{false};
   bool interrupted_{false};
   int64_t last_disruptive_rule_id_{0};
+  // How many Transaction::m_rulesMessages entries we have already metric/log-flushed.
+  std::size_t rules_messages_seen_{0};
   std::string request_id_;
   std::string method_;
   std::string path_;
@@ -240,6 +255,9 @@ private:
   ModSecRootContext* rootContext() { return static_cast<ModSecRootContext*>(root()); }
 
   void activateContext();
+  // ModSecurity only calls serverLog for *non-disruptive* matches. Deny/block
+  // rules land in m_rulesMessages without the log CB — drain those for metrics.
+  void flushNewRuleMessages();
   int processIntervention(const char* phase);
   void finalizeResponseBodyPhase();
   void sendBlockLocalResponse(int status);
@@ -318,6 +336,25 @@ static void logJson(bool is_error, const char* event, const std::string& fields 
   }
 }
 
+// Configure-phase heap ladder (WS0). Envoy log grep: "event":"heap_sample".
+// Used to tune INITIAL_MEMORY — peak during msc_rules_add drives the floor.
+static uint64_t wasmHeapBytes() {
+  return static_cast<uint64_t>(emscripten_get_heap_size());
+}
+
+static void logHeapSample(const char* stage, const char* label = nullptr, std::size_t bytes = 0) {
+  std::ostringstream fields;
+  fields << "\"stage\":\"" << stage << "\""
+         << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(wasmHeapBytes());
+  if (label != nullptr && label[0] != '\0') {
+    fields << ",\"label\":\"" << jsonEscape(label) << "\"";
+  }
+  if (bytes > 0) {
+    fields << ",\"bytes\":" << bytes;
+  }
+  logJson(false, "heap_sample", fields.str());
+}
+
 // Fallback rule-match line when no stream context is active (rare configure-time).
 // "id" is required for go-ftw JSON log parsing.
 // Classic [id "N"] [msg "..."] tail is required for go-ftw match_regex tests (e.g. 922130).
@@ -392,9 +429,11 @@ bool loadRuleChunk(const char* label, const char* data, std::size_t size, void* 
   // Progress log — if Envoy dies with "unreachable" right after a label, that chunk is the culprit.
   {
     std::ostringstream fields;
-    fields << "\"label\":\"" << jsonEscape(lab) << "\",\"bytes\":" << size;
+    fields << "\"label\":\"" << jsonEscape(lab) << "\",\"bytes\":" << size
+           << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(wasmHeapBytes());
     logJson(false, "rules_loading", fields.str());
   }
+  logHeapSample("rules_loading", lab, size);
   // Always log a short preview for small inline chunks (custom user rules).
   if (size > 0 && size < 512) {
     std::string preview(data, size);
@@ -412,25 +451,32 @@ bool loadRuleChunk(const char* label, const char* data, std::size_t size, void* 
   // Always copy into a mutable buffer. RulesSet::load may mutate/parse in place;
   // zero-copy into read-only catalog/rodata has caused unreachable traps on some
   // custom SecRule text after a full CRS load.
+  // Peak during configure ≈ catalog rodata + this chunk + RulesSet graph. Drop the
+  // temporary as soon as load() returns so sequential Path B chunks do not stack copies.
   std::string chunk;
   chunk.reserve(size + 1);
   chunk.assign(data, size);
   int ret = rules->load(chunk.c_str(), ref);
+  chunk.clear();
+  chunk.shrink_to_fit();
   if (ret < 0) {
     err = rules->m_parserError.str();
     if (err.empty()) {
       err = std::string("RulesSet::load failed for ") + lab;
     }
     std::ostringstream fields;
-    fields << "\"label\":\"" << jsonEscape(lab) << "\",\"error\":\"" << jsonEscape(err) << "\"";
+    fields << "\"label\":\"" << jsonEscape(lab) << "\",\"error\":\"" << jsonEscape(err)
+           << "\",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(wasmHeapBytes());
     logJson(true, "rules_load_failed", fields.str());
     return false;
   }
   {
     std::ostringstream fields;
-    fields << "\"label\":\"" << jsonEscape(lab) << "\"";
+    fields << "\"label\":\"" << jsonEscape(lab) << "\""
+           << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(wasmHeapBytes());
     logJson(false, "rules_loaded", fields.str());
   }
+  logHeapSample("rules_loaded", lab, size);
   return true;
 }
 
@@ -450,15 +496,18 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
   LOG_WARN(MODSECURITY_PROXY_WASM_VERSION_LINE);
   {
     std::ostringstream fields;
-    fields << "\"size\":" << configuration_size;
+    fields << "\"size\":" << configuration_size
+           << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(wasmHeapBytes());
     logJson(false, "configure_start", fields.str());
   }
+  logHeapSample("configure_start");
 
   std::string config;
   if (!readPluginConfig(configuration_size, config)) {
     logJson(true, "configure_failed", "\"error\":\"Failed to read plugin configuration\"");
     return false;
   }
+  logHeapSample("config_read", nullptr, config.size());
 
   if (!parseWafPluginOptions(config, plugin_options_)) {
     logJson(true, "configure_failed", "\"error\":\"Failed to parse plugin configuration options\"");
@@ -482,6 +531,7 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
   modsec_->setServerLogCb(modsecurity_proxy_wasm_log_cb, modsecurity::RuleMessageLogProperty);
 
   rules_ = new RulesSet();
+  logHeapSample("modsec_init");
 
   // Phrase lists live in the embedded catalog and are served to PmFromFile via
   // modsecurity_proxy_wasm_resolve_data_file (Envoy V8 has no writable MEMFS).
@@ -490,13 +540,20 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
             "\"error\":\"CRS .data catalog missing — @pmFromFile rules will not load\"");
     return false;
   }
-  logJson(false, "crs_data_ready", "\"source\":\"catalog\"");
+  {
+    std::ostringstream fields;
+    fields << "\"source\":\"catalog\""
+           << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(wasmHeapBytes());
+    logJson(false, "crs_data_ready", fields.str());
+  }
+  logHeapSample("after_crs_data");
 
   std::string err;
   if (!applyWafConfiguration(config, loadRuleChunk, rules_, err)) {
     if (!plugin_options_.allow_fallback || !wafConfigAllowsFallback(config)) {
       std::ostringstream fields;
-      fields << "\"error\":\"" << jsonEscape(err) << "\",\"fail_closed\":true";
+      fields << "\"error\":\"" << jsonEscape(err) << "\",\"fail_closed\":true"
+             << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(wasmHeapBytes());
       logJson(true, "config_load_failed", fields.str());
       return false;
     }
@@ -515,8 +572,16 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
     }
     logJson(false, "fallback_rules_loaded");
     metrics_.countConfigureFallbackRules();
+    logHeapSample("fallback_rules_loaded");
+    metrics_.recordWasmMemory();
     return true;
   }
+
+  logHeapSample("rules_applied");
+  // Drop the raw plugin config string now that rules are loaded (can be multi-MB gzip JSON).
+  config.clear();
+  config.shrink_to_fit();
+  logHeapSample("config_freed");
 
   metrics_.recordWasmMemory();
   {
@@ -529,10 +594,14 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
     }
     fields << "\"metric_labels\":" << plugin_options_.metrics.labels.size()
            << ",\"per_rule_id\":" << (plugin_options_.metrics.per_rule_id ? "true" : "false")
+           << ",\"dual_prefix\":" << (plugin_options_.metrics.dual_prefix ? "true" : "false")
+           << ",\"fullwidth_normalize\":"
+           << (plugin_options_.fullwidth_normalize ? "true" : "false")
            << ",\"stats\":" << (plugin_options_.metrics.enabled ? "true" : "false")
-           << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(emscripten_get_heap_size());
+           << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(wasmHeapBytes());
     logJson(false, "config_applied", fields.str());
   }
+  logHeapSample("config_applied");
   return true;
 }
 
@@ -557,6 +626,7 @@ void ModSecContext::onCreate() {
   response_body_interrupted_ = false;
   interrupted_ = false;
   last_disruptive_rule_id_ = 0;
+  rules_messages_seen_ = 0;
   request_id_.clear();
   method_.clear();
   path_.clear();
@@ -689,7 +759,32 @@ void ModSecContext::recordRuleMatch(const RuleMessage& rule_message) {
                      tags_csv, rule_message.m_data, rule_message.m_match);
 }
 
+void ModSecContext::flushNewRuleMessages() {
+  if (!transaction_) {
+    return;
+  }
+  // libModSecurity performLogging():
+  //   - non-disruptive + log  → serverLog (our log CB) AND m_rulesMessages
+  //   - disruptive (deny/block) → m_rulesMessages only (no serverLog)
+  // Drain new disruptive entries so rule_match metrics and last_disruptive_rule_id_
+  // work for the smoke rules that use deny/block.
+  const auto& msgs = transaction_->m_rulesMessages;
+  std::size_t idx = 0;
+  for (const auto& rm : msgs) {
+    if (idx++ < rules_messages_seen_) {
+      continue;
+    }
+    if (rm.m_isDisruptive) {
+      recordRuleMatch(rm);
+    }
+  }
+  rules_messages_seen_ = msgs.size();
+}
+
 int ModSecContext::processIntervention(const char* phase) {
+  // Capture disruptive rule matches before reading intervention status.
+  flushNewRuleMessages();
+
   ModSecurityIntervention intervention;
   intervention.status = 200;
   intervention.url = nullptr;
@@ -763,7 +858,9 @@ void ModSecContext::appendBufferedRequestBody() {
   if (body && body->size() > 0) {
     std::string chunk(body->data(), body->size());
     // Fold fullwidth UTF-8 / %EF%BC%xx in bodies (form + JSON) for CRS XSS (941110-7).
-    normalizeFullwidthAsciiInPlace(chunk);
+    if (rootContext()->plugin_options_.fullwidth_normalize) {
+      normalizeFullwidthAsciiInPlace(chunk);
+    }
     transaction_->appendRequestBody(reinterpret_cast<const unsigned char*>(chunk.data()), chunk.size());
     request_body_received_ += body->size();
   } else {
@@ -847,7 +944,9 @@ FilterHeadersStatus ModSecContext::onRequestHeaders(uint32_t, bool end_of_stream
     getValue({"request", "headers", ":method"}, &method);
   }
   // Fold fullwidth Unicode in path/query so ARGS from URI match CRS XSS regexes.
-  normalizeFullwidthAsciiInPlace(path);
+  if (root->plugin_options_.fullwidth_normalize) {
+    normalizeFullwidthAsciiInPlace(path);
+  }
   path_ = path;
   method_ = method;
 
@@ -887,7 +986,9 @@ FilterHeadersStatus ModSecContext::onRequestHeaders(uint32_t, bool end_of_stream
       const std::string name = std::string(p.first);
       std::string value = std::string(p.second);
       // Cookie names/values and other headers may carry fullwidth XSS (CRS 941110-8).
-      normalizeFullwidthAsciiInPlace(value);
+      if (root->plugin_options_.fullwidth_normalize) {
+        normalizeFullwidthAsciiInPlace(value);
+      }
       transaction_->addRequestHeader(name, value);
       if (name == "host" || name == "Host") {
         has_host = true;
@@ -986,7 +1087,9 @@ FilterDataStatus ModSecContext::onRequestBody(size_t body_buffer_length, bool en
     auto body = getBufferBytes(WasmBufferType::HttpRequestBody, request_body_received_, chunk_size);
     if (body && body->size() > 0) {
       std::string chunk(body->data(), body->size());
-      normalizeFullwidthAsciiInPlace(chunk);
+      if (rootContext()->plugin_options_.fullwidth_normalize) {
+        normalizeFullwidthAsciiInPlace(chunk);
+      }
       transaction_->appendRequestBody(reinterpret_cast<const unsigned char*>(chunk.data()), chunk.size());
       request_body_received_ += body->size();
     } else {

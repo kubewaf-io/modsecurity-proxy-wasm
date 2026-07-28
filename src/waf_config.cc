@@ -513,12 +513,20 @@ bool loadDirectiveList(const std::string& json, const std::string& profile,
     std::string compressed;
     if (encoding == "gzip+base64" || encoding.find("base64") != std::string::npos) {
       if (!base64Decode(b64, compressed, error)) return false;
+      // Free base64 workspace before inflate peak (Path B payloads can be multi-MB).
+      b64.clear();
+      b64.shrink_to_fit();
     } else {
-      compressed = b64;
+      compressed = std::move(b64);
     }
     std::string plain;
     if (!gzipInflate(compressed, plain, error)) return false;
+    // Drop gzip input immediately; plain is the only buffer needed for line split.
+    compressed.clear();
+    compressed.shrink_to_fit();
     directives = splitDirectiveLines(plain);
+    plain.clear();
+    plain.shrink_to_fit();
     if (directives.empty()) {
       error = "compressed directives inflated to empty list";
       return false;
@@ -680,19 +688,24 @@ bool applyJsonConfig(const std::string& json, RuleChunkLoader loader, void* user
   // idempotent for single-line entries.
   std::vector<std::string> lines;
   lines.reserve(directives.size() * 2);
-  for (const auto& raw : directives) {
+  for (auto& raw : directives) {
     std::vector<std::string> parts = splitDirectiveLines(raw);
     for (auto& p : parts) {
       lines.push_back(std::move(p));
     }
+    // Release each source string as soon as it is flattened (helps gzip Path B peaks).
+    raw.clear();
+    raw.shrink_to_fit();
   }
+  directives.clear();
+  directives.shrink_to_fit();
 
   std::set<std::string> seen;
   std::string inline_batch;
-  inline_batch.reserve(8192);
   // Keep each loadRules chunk modest. Large Path B SecLang batches have trapped
   // Envoy V8 as "Uncaught RuntimeError: unreachable" during msc_rules_add.
   constexpr std::size_t kMaxInlineChunkBytes = 4096;
+  inline_batch.reserve(kMaxInlineChunkBytes);
 
   auto flushInline = [&]() -> bool {
     if (inline_batch.empty()) {
@@ -702,6 +715,13 @@ bool applyJsonConfig(const std::string& json, RuleChunkLoader loader, void* user
       return false;
     }
     inline_batch.clear();
+    // Bound reserved capacity between flushes so a large single-line rule does not
+    // leave a multi-MB capacity hanging for the rest of configure.
+    if (inline_batch.capacity() > kMaxInlineChunkBytes * 2) {
+      std::string fresh;
+      fresh.reserve(kMaxInlineChunkBytes);
+      inline_batch.swap(fresh);
+    }
     return true;
   };
 
@@ -953,9 +973,10 @@ bool hasKubeWafIdentity(const std::string& config, const WafPluginOptions* opts)
 void fillMetricOptions(const std::string& config, WafMetricOptions& out) {
   out.labels.clear();
   out.enabled = true;
-  out.per_rule_id = true;
-  out.rule_tags = true;
-  out.dual_prefix = true;
+  // Slim defaults: core tx/interrupt gauges only unless operator enables detail.
+  out.per_rule_id = false;
+  out.rule_tags = false;
+  out.dual_prefix = false;
 
   if (!looksLikeJson(trim(config))) {
     return;
@@ -966,12 +987,12 @@ void fillMetricOptions(const std::string& config, WafMetricOptions& out) {
   std::string metrics_obj;
   if (extractJsonObjectSlice(config, "metrics", metrics_obj)) {
     out.enabled = extractJsonBoolValue(metrics_obj, "enabled", true);
-    out.per_rule_id = extractJsonBoolValue(metrics_obj, "per_rule_id", true);
-    out.rule_tags = extractJsonBoolValue(metrics_obj, "rule_tags", true);
-    out.dual_prefix = extractJsonBoolValue(metrics_obj, "dual_prefix", true);
+    out.per_rule_id = extractJsonBoolValue(metrics_obj, "per_rule_id", false);
+    out.rule_tags = extractJsonBoolValue(metrics_obj, "rule_tags", false);
+    out.dual_prefix = extractJsonBoolValue(metrics_obj, "dual_prefix", false);
   } else {
-    out.per_rule_id = extractJsonBoolValue(config, "metrics_per_rule_id", true);
-    out.rule_tags = extractJsonBoolValue(config, "metrics_rule_tags", true);
+    out.per_rule_id = extractJsonBoolValue(config, "metrics_per_rule_id", false);
+    out.rule_tags = extractJsonBoolValue(config, "metrics_rule_tags", false);
     // Flat enable flag not historically present; default true.
     out.enabled = extractJsonBoolValue(config, "metrics_enabled", true);
   }
@@ -982,6 +1003,22 @@ void fillMetricOptions(const std::string& config, WafMetricOptions& out) {
   }
   if (config.find("\"metrics_rule_tags\"") != std::string::npos) {
     out.rule_tags = extractJsonBoolValue(config, "metrics_rule_tags", out.rule_tags);
+  }
+}
+
+void fillTransformOptions(const std::string& config, WafPluginOptions& out) {
+  // Default on: CRS fullwidth XSS (941110-7/8). Operators / perf profiles can disable.
+  out.fullwidth_normalize = true;
+  if (!looksLikeJson(trim(config))) {
+    return;
+  }
+  std::string transforms_obj;
+  if (extractJsonObjectSlice(config, "transforms", transforms_obj)) {
+    out.fullwidth_normalize =
+        extractJsonBoolValue(transforms_obj, "fullwidth_normalize", true);
+  } else if (config.find("\"fullwidth_normalize\"") != std::string::npos) {
+    // Flat alias for simple smoke configs.
+    out.fullwidth_normalize = extractJsonBoolValue(config, "fullwidth_normalize", true);
   }
 }
 
@@ -1054,6 +1091,7 @@ bool parseWafPluginOptions(const std::string& config, WafPluginOptions& out) {
   }
   fillMetricOptions(config, out.metrics);
   fillBlockOptions(config, out.block);
+  fillTransformOptions(config, out);
   out.mode = extractJsonStringValue(config, "mode");
   out.config_id = extractJsonStringValue(config, "config_id");
   out.allow_fallback = extractJsonBoolValue(config, "allow_fallback", false);
@@ -1062,6 +1100,13 @@ bool parseWafPluginOptions(const std::string& config, WafPluginOptions& out) {
     out.allow_fallback = false;
     if (out.block.message == "blocked by modsecurity") {
       out.block.message = "blocked by kubeWAF";
+    }
+    // Product dashboards expect kubewaf_waf.* unless dual_prefix was set explicitly.
+    const bool dual_explicit =
+        (config.find("\"dual_prefix\"") != std::string::npos) ||
+        (config.find("\"metrics_dual_prefix\"") != std::string::npos);
+    if (!dual_explicit) {
+      out.metrics.dual_prefix = true;
     }
   }
   return true;

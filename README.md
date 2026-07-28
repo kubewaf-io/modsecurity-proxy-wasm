@@ -78,7 +78,8 @@ lines the same way as a plain string array. Small configs stay uncompressed arra
     "engine": "modsecurity",
     "owner": "modsecurity-proxy-wasm"
   },
-  "metrics": { "enabled": true, "per_rule_id": true, "rule_tags": true },
+  "metrics": { "enabled": true, "per_rule_id": false, "rule_tags": false, "dual_prefix": true },
+  "transforms": { "fullwidth_normalize": true },
   "block": { "message": "blocked by kubeWAF" }
 }
 ```
