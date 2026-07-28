@@ -1,7 +1,6 @@
 services:
   albedo:
     # renovate: datasource=docker depName=ghcr.io/coreruleset/albedo
-    # v0.3.0: --json backend logs (inspect/reflect); go-ftw still reads envoy.log for rule_match.
     image: ghcr.io/coreruleset/albedo:0.3.0
     command: ["--json"]
 
@@ -19,7 +18,7 @@ services:
     depends_on:
       - chown
       - albedo
-    image: ${ENVOY_IMAGE:-envoyproxy/envoy:v1.38-latest}
+    image: ${ENVOY_IMAGE:-envoyproxy/envoy:v1.39-latest@sha256:d59f7f5fa10cff6d5892b6c5e7df5c9297ddfb2c3683e33fbfb82da24de4fa66}
     # Do not use --log-path: Envoy buffers file logs (~8s lag), so go-ftw markers
     # need 300ms×40 retries. Line-buffered tee makes markers appear in ~ms.
     entrypoint: ["/bin/sh", "-c"]

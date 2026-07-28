@@ -13,7 +13,7 @@ WASM_OUT := dist/modsecurity-proxy-wasm.wasm
 # --- Pinned dependencies (Renovate: customManagers:makefileVersions + renovate.json) ---
 
 # renovate: datasource=github-tags depName=emscripten-core/emsdk versioning=semver-coerced
-EMSDK_VERSION ?= 3.1.74
+EMSDK_VERSION ?= 6.0.4
 
 # renovate: datasource=github-tags depName=proxy-wasm/proxy-wasm-cpp-sdk versioning=git
 PROXY_WASM_CPP_SDK_VERSION ?= 727de65b37507611b76123316c6832581f42d4f0
@@ -34,13 +34,13 @@ YAJL_VERSION ?= 2.1.0
 YAJL_SHA ?= a0ecdde0c042b9256170f2f8890dd9451a4240aa
 
 # renovate: datasource=github-tags depName=coreruleset/coreruleset versioning=semver
-CRS_VERSION ?= v4.27.0
+CRS_VERSION ?= v4.28.0
 
 # renovate: datasource=docker depName=ghcr.io/coreruleset/go-ftw
 GO_FTW_VERSION ?= 2.5.0
 
 # renovate: datasource=docker depName=envoyproxy/envoy versioning=loose
-ENVOY_IMAGE ?= envoyproxy/envoy:v1.38-latest
+ENVOY_IMAGE ?= envoyproxy/envoy:v1.39.0
 
 BUILD_ARGS := $(if $(CRS_VERSION),--build-arg CRS_VERSION=$(CRS_VERSION),) \
               $(if $(VERSION),--build-arg VERSION=$(VERSION),)
