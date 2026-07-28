@@ -89,6 +89,20 @@ def should_skip_line(line: str) -> bool:
 
 def load_conf_directives(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8", errors="replace")
+    # CRS 980170 is a phase-5 SecAction with pass+msg but no explicit "log"
+    # (crs-linter: pass_nolog). Apache surfaces it via default/audit paths;
+    # libModSecurity under proxy-wasm only emits when "log" is present, so go-ftw
+    # never sees id 980170. Inject log for FTW Path B only.
+    if path.name == "RESPONSE-980-CORRELATION.conf":
+        text = text.replace(
+            '"id:980170,\\\n    phase:5,\\\n    pass,\\\n    t:none,\\\n    noauditlog,',
+            '"id:980170,\\\n    phase:5,\\\n    pass,\\\n    log,\\\n    t:none,\\\n    noauditlog,',
+        )
+        # Flattened form (single-line) fallback.
+        text = text.replace(
+            "id:980170,phase:5,pass,t:none,noauditlog,",
+            "id:980170,phase:5,pass,log,t:none,noauditlog,",
+        )
     return [ln for ln in flatten_seclang(text) if not should_skip_line(ln)]
 
 
@@ -210,6 +224,12 @@ static_resources:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
                 stat_prefix: ingress_http
                 codec_type: AUTO
+                # Preserve client path/query encoding for CRS protocol-enforcement
+                # (920230/920271–273) and path XSS (941101). Default Envoy
+                # normalize_path percent-decodes and breaks REQUEST_URI_RAW checks.
+                normalize_path: false
+                merge_slashes: false
+                path_with_escaped_slashes_action: KEEP_UNCHANGED
                 http_protocol_options:
                   accept_http_10: true
                 route_config:

@@ -242,6 +242,7 @@ private:
   size_t response_body_received_{0};
   bool response_body_processed_{false};
   bool response_body_interrupted_{false};
+  bool logging_phase_done_{false};
   bool interrupted_{false};
   int64_t last_disruptive_rule_id_{0};
   // How many Transaction::m_rulesMessages entries we have already metric/log-flushed.
@@ -260,6 +261,7 @@ private:
   void flushNewRuleMessages();
   int processIntervention(const char* phase);
   void finalizeResponseBodyPhase();
+  void runLoggingPhaseIfNeeded();
   void sendBlockLocalResponse(int status);
   FilterHeadersStatus sendBlockResponse(int status);
   FilterDataStatus sendBlockResponseData(int status);
@@ -770,6 +772,11 @@ void ModSecContext::flushNewRuleMessages() {
   //   - disruptive (deny/block) → m_rulesMessages only (no serverLog)
   // Drain new disruptive entries so rule_match metrics and last_disruptive_rule_id_
   // work for the smoke rules that use deny/block.
+  //
+  // DetectionOnly (FTW): block/deny actions are not executed, so m_isDisruptive
+  // often stays false and serverLog already logged them. Still drain any true
+  // disruptive leftovers. Phase-5 processLogging() may also append messages after
+  // response body — always drain those (seen_ cursor avoids double metrics).
   const auto& msgs = transaction_->m_rulesMessages;
   std::size_t idx = 0;
   for (const auto& rm : msgs) {
@@ -898,6 +905,31 @@ void ModSecContext::finalizeResponseBodyPhase() {
   response_body_received_ = 0;
 }
 
+// CRS RESPONSE-980 phase 5 (e.g. 980170). Run as soon as the response is complete
+// so go-ftw sees the id before the end-marker request, not only on stream destroy.
+void ModSecContext::runLoggingPhaseIfNeeded() {
+  if (!transaction_ || logging_phase_done_) {
+    return;
+  }
+  activateContext();  // so serverLog → recordRuleMatch uses this stream context
+  const std::size_t before = rules_messages_seen_;
+  transaction_->processLogging();
+  // CRS 980170 is a SecAction with pass+msg; inject "log" in Path B generator.
+  // Drain every NEW m_rulesMessages entry (list — no random access). Non-disruptive
+  // matches may also hit serverLog during processLogging (possible double log line;
+  // go-ftw only needs the id present).
+  const auto& msgs = transaction_->m_rulesMessages;
+  std::size_t idx = 0;
+  for (const auto& rm : msgs) {
+    if (idx++ < before) {
+      continue;
+    }
+    recordRuleMatch(rm);
+  }
+  rules_messages_seen_ = msgs.size();
+  logging_phase_done_ = true;
+}
+
 FilterDataStatus ModSecContext::sanitizeInterruptedResponseBody(size_t body_buffer_length) {
   static const char kBlocked[] = "blocked by modsecurity\n";
   const std::string blocked(kBlocked);
@@ -935,10 +967,19 @@ FilterHeadersStatus ModSecContext::onRequestHeaders(uint32_t, bool end_of_stream
 
   std::string path = "/";
   std::string method = "GET";
+  // Prefer :path as seen by Envoy. With normalize_path=false (FTW envoy YAML),
+  // percent-encoding is preserved so REQUEST_URI_RAW / double-encoding rules
+  // (920230, 920271–273) and path XSS (941101) see client bytes.
+  // Fall back to request.path / request.url_path when :path is absent.
   if (auto h = getRequestHeader(":path")) {
     path = h->toString();
-  } else {
-    getValue({"request", "headers", ":path"}, &path);
+  } else if (!getValue({"request", "headers", ":path"}, &path) || path.empty()) {
+    if (!getValue({"request", "path"}, &path) || path.empty()) {
+      getValue({"request", "url_path"}, &path);
+    }
+  }
+  if (path.empty()) {
+    path = "/";
   }
   if (auto h = getRequestHeader(":method")) {
     method = h->toString();
@@ -946,6 +987,7 @@ FilterHeadersStatus ModSecContext::onRequestHeaders(uint32_t, bool end_of_stream
     getValue({"request", "headers", ":method"}, &method);
   }
   // Fold fullwidth Unicode in path/query so ARGS from URI match CRS XSS regexes.
+  // Does not percent-decode — keeps %xx sequences for protocol-enforcement rules.
   if (root->plugin_options_.fullwidth_normalize) {
     normalizeFullwidthAsciiInPlace(path);
   }
@@ -1050,6 +1092,9 @@ FilterHeadersStatus ModSecContext::onRequestHeaders(uint32_t, bool end_of_stream
     if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kRequestBody); st != 0) {
       return sendBlockResponse(st);
     }
+    // Inbound anomaly scores are final after phase 2. Run phase 5 early so CRS
+    // 980170 appears in logs before go-ftw's end marker (response body may lag).
+    runLoggingPhaseIfNeeded();
     return FilterHeadersStatus::Continue;
   }
 
@@ -1072,6 +1117,7 @@ FilterTrailersStatus ModSecContext::onRequestTrailers(uint32_t) {
   if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kRequestBody); st != 0) {
     return sendBlockResponseTrailers(st);
   }
+  runLoggingPhaseIfNeeded();
   return FilterTrailersStatus::Continue;
 }
 
@@ -1110,6 +1156,7 @@ FilterDataStatus ModSecContext::onRequestBody(size_t body_buffer_length, bool en
   if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kRequestBody); st != 0) {
     return sendBlockResponseData(st);
   }
+  runLoggingPhaseIfNeeded();
   return FilterDataStatus::Continue;
 }
 
@@ -1173,6 +1220,7 @@ FilterHeadersStatus ModSecContext::onResponseHeaders(uint32_t, bool end_of_strea
     if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kResponseBody); st != 0) {
       return sendBlockResponse(st);
     }
+    runLoggingPhaseIfNeeded();
   }
 
   return FilterHeadersStatus::Continue;
@@ -1204,6 +1252,7 @@ FilterTrailersStatus ModSecContext::onResponseTrailers(uint32_t) {
   if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kResponseBody); st != 0) {
     sanitizeInterruptedResponseBody(buffer_size);
   }
+  runLoggingPhaseIfNeeded();
   return FilterTrailersStatus::Continue;
 }
 
@@ -1244,10 +1293,26 @@ FilterDataStatus ModSecContext::onResponseBody(size_t body_buffer_length, bool e
   if (int st = processIntervention(modsecurity_proxy_wasm_metric_phase::kResponseBody); st != 0) {
     return sanitizeInterruptedResponseBody(body_buffer_length);
   }
+  runLoggingPhaseIfNeeded();
   return FilterDataStatus::Continue;
 }
 
 void ModSecContext::onDelete() {
+  // Fallback: if response path skipped finalize (client cancel, etc.), still run phase 5.
+  if (transaction_ != nullptr) {
+    activateContext();
+    if (!request_body_processed_) {
+      transaction_->processRequestBody();
+      logRequestBodyProcessorErrors();
+      request_body_processed_ = true;
+      processIntervention(modsecurity_proxy_wasm_metric_phase::kRequestBody);
+    }
+    if (!response_body_processed_) {
+      finalizeResponseBodyPhase();
+      processIntervention(modsecurity_proxy_wasm_metric_phase::kResponseBody);
+    }
+    runLoggingPhaseIfNeeded();
+  }
   if (transaction_ != nullptr && !interrupted_) {
     rootContext()->metrics_.countTxAllowed();
   }

@@ -140,7 +140,8 @@ make extract-wasm    # → dist/modsecurity-proxy-wasm.wasm
 
 ```bash
 make test-bats         # Envoy smoke
-make test-regression   # CRS go-ftw (Path B gzip CRS; FTW_INCLUDE='^941.*' for subset)
+make test-regression                         # full CRS go-ftw (Path B; large ignore list)
+FTW_INCLUDE='^941.*' make test-regression    # CI XSS subset (must stay green)
 make test-unit         # waf_config
 ```
 
