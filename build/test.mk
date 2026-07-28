@@ -63,8 +63,10 @@ $(FUZZ_BUILD_DIR)/waf_config_fuzz: deps-test \
 		-o $(FUZZ_BUILD_DIR)/stub_rules_catalog.o
 	clang++ -std=c++17 -fsanitize=fuzzer,address $(UNIT_CXXFLAGS) -c $(TEST_DIR)/fuzz/waf_config_fuzz.cc \
 		-o $(FUZZ_BUILD_DIR)/waf_config_fuzz.o
+	# waf_config links zlib for directives_encoding=gzip+base64 (same as unit tests).
 	clang++ -std=c++17 -fsanitize=fuzzer,address -o $(FUZZ_BUILD_DIR)/waf_config_fuzz \
-		$(FUZZ_BUILD_DIR)/waf_config_fuzz.o $(FUZZ_BUILD_DIR)/waf_config.o $(FUZZ_BUILD_DIR)/stub_rules_catalog.o
+		$(FUZZ_BUILD_DIR)/waf_config_fuzz.o $(FUZZ_BUILD_DIR)/waf_config.o \
+		$(FUZZ_BUILD_DIR)/stub_rules_catalog.o -lz
 
 test-fuzz: $(FUZZ_BUILD_DIR)/waf_config_fuzz
 	$(FUZZ_BUILD_DIR)/waf_config_fuzz -max_total_time=10 -runs=10000
