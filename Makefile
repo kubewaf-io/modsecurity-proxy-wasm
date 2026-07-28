@@ -81,6 +81,8 @@ help:
 	@echo "  make test-unit         Native gtest for waf_config (fast)"
 	@echo "  make test-bats         Envoy integration smoke tests (needs dist/modsecurity-proxy-wasm.wasm)"
 	@echo "  make test-envoy        Alias for test-bats + verify-getentropy-stub"
+	@echo "  make test-configure-stress     Path B synthetic gzip/chain/pm configure gate"
+	@echo "  make test-configure-crs-soak   Path B real CRS configure soak (memory truth)"
 	@echo "  make test-regression   CRS go-ftw regression (FTW_INCLUDE='^941.*' for subset)"
 	@echo "  make test-fuzz         libFuzzer smoke on waf_config (needs clang++)"
 	@echo "  make test-perf-k6          k6 load test (PERF_PROFILE / PERF_SCENARIO)"
@@ -89,6 +91,11 @@ help:
 	@echo "  make test-perf-charts      Overlay chart from latest perf results"
 	@echo "  make test-perf-release     Perf smoke + release overlay chart"
 	@echo "  make verify-getentropy-stub  Policy check for wasm getentropy stub"
+	@echo ""
+	@echo "Wasm memory knobs (link time; rebuild required):"
+	@echo "  INITIAL_MEMORY=32MB MAXIMUM_MEMORY=512MB STACK_SIZE=4MB   # defaults"
+	@echo "  INITIAL_MEMORY=64MB|128MB make modsecurity-proxy-wasm.wasm  # if Path B OOM"
+	@echo "  Then: make test-configure-stress / test-configure-crs-soak"
 
 # --- Inspect finished .wasm ---
 
