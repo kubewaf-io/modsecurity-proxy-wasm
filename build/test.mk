@@ -19,6 +19,7 @@ UNIT_CXXFLAGS   := -std=c++17 -Wall -Wextra -I$(ROOT_DIR)/src \
 UNIT_LDFLAGS    := -L$(UNIT_BUILD_DIR) -lgtest_main -lgtest -pthread -lz
 
 .PHONY: deps-test deps-perf-charts test-unit test-fuzz test-bats \
+	test-configure-stress test-configure-crs-soak \
 	test-perf-k6 test-perf-k6-compare test-perf-k6-ci test-perf-k6-keep \
 	test-perf-charts test-perf-release-compare test-perf-release
 
@@ -75,15 +76,35 @@ test-bats: deps-test verify-getentropy-stub
 	WASM=$(WASM_OUT) $(TEST_DIR)/integration/verify-v8-runtime.sh
 	ENVOY_IMAGE=$(ENVOY_IMAGE) "$(BATS_BIN)" $(TEST_DIR)/integration/bats/
 
+# Path B configure stress (gzip + chains + @pmFromFile). Gate before lowering INITIAL_MEMORY.
+# Optional: CONFIGURE_HEAP_BUDGET_BYTES=134217728 SCORE_RULES=200 make test-configure-stress
+test-configure-stress:
+	@test -f $(WASM_OUT) || (echo "ERROR: $(WASM_OUT) not found. Run: make image" >&2; exit 1)
+	@chmod +x $(TEST_DIR)/integration/configure-stress.sh \
+		$(TEST_DIR)/integration/generate-configure-stress-config.py \
+		$(TEST_DIR)/perf/finalize-memory.sh
+	WASM=$(WASM_OUT) ENVOY_IMAGE=$(ENVOY_IMAGE) $(TEST_DIR)/integration/configure-stress.sh
+
+# Path B full CRS configure soak (memory truth for 64MB floor vs real CRS SecLang).
+# Profiles: CRS_SOAK_PROFILE=request|full  (default request = REQUEST-*.conf)
+# Needs CRS tree: .cache/deps/crs from make deps (or CRS_DIR=...).
+test-configure-crs-soak:
+	@test -f $(WASM_OUT) || (echo "ERROR: $(WASM_OUT) not found. Run: make image" >&2; exit 1)
+	@chmod +x $(TEST_DIR)/integration/configure-crs-soak.sh \
+		$(TEST_DIR)/integration/generate-crs-path-b-config.py \
+		$(TEST_DIR)/perf/finalize-memory.sh
+	WASM=$(WASM_OUT) ENVOY_IMAGE=$(ENVOY_IMAGE) CRS_DIR=$(CRS_DIR) \
+		$(TEST_DIR)/integration/configure-crs-soak.sh
+
 test-perf-k6:
 	@chmod +x $(TEST_DIR)/perf/run-k6.sh $(TEST_DIR)/perf/collect-stats.sh \
 		$(TEST_DIR)/perf/finalize-memory.sh $(TEST_DIR)/perf/fetch-coraza-wasm.sh
-	ENVOY_IMAGE=$(ENVOY_IMAGE) $(TEST_DIR)/perf/run-k6.sh
+	PERF_WASM=$(WASM_OUT) ENVOY_IMAGE=$(ENVOY_IMAGE) $(TEST_DIR)/perf/run-k6.sh
 
 test-perf-k6-compare:
 	@chmod +x $(TEST_DIR)/perf/run-k6.sh $(TEST_DIR)/perf/collect-stats.sh \
 		$(TEST_DIR)/perf/finalize-memory.sh $(TEST_DIR)/perf/fetch-coraza-wasm.sh
-	ENVOY_IMAGE=$(ENVOY_IMAGE) $(TEST_DIR)/perf/run-k6.sh --compare
+	PERF_WASM=$(WASM_OUT) ENVOY_IMAGE=$(ENVOY_IMAGE) $(TEST_DIR)/perf/run-k6.sh --compare
 
 test-perf-k6-ci:
 	@test -f $(WASM_OUT) || (echo "ERROR: $(WASM_OUT) not found. Run: make image" >&2; exit 1)
@@ -91,11 +112,11 @@ test-perf-k6-ci:
 		$(TEST_DIR)/perf/finalize-memory.sh $(TEST_DIR)/perf/fetch-coraza-wasm.sh \
 		$(TEST_DIR)/integration/verify-v8-runtime.sh
 	WASM=$(WASM_OUT) $(TEST_DIR)/integration/verify-v8-runtime.sh
-	ENVOY_IMAGE=$(ENVOY_IMAGE) PERF_CI=1 $(TEST_DIR)/perf/run-k6.sh --ci --all-smoke
+	PERF_WASM=$(WASM_OUT) ENVOY_IMAGE=$(ENVOY_IMAGE) PERF_CI=1 $(TEST_DIR)/perf/run-k6.sh --ci --all-smoke
 
 test-perf-k6-keep:
 	@chmod +x $(TEST_DIR)/perf/run-k6.sh $(TEST_DIR)/perf/collect-stats.sh
-	KEEP_RUNNING=1 ENVOY_IMAGE=$(ENVOY_IMAGE) $(TEST_DIR)/perf/run-k6.sh
+	PERF_WASM=$(WASM_OUT) KEEP_RUNNING=1 ENVOY_IMAGE=$(ENVOY_IMAGE) $(TEST_DIR)/perf/run-k6.sh
 
 CHARTS_VENV    := $(TEST_TOOLS_DIR)/charts-venv
 CHARTS_PYTHON  := $(shell if [ -x "$(TEST_TOOLS_DIR)/charts-venv/bin/python3" ]; then echo "$(TEST_TOOLS_DIR)/charts-venv/bin/python3"; elif python3 -c "import matplotlib" 2>/dev/null; then echo python3; else echo "$(TEST_TOOLS_DIR)/charts-venv/bin/python3"; fi)

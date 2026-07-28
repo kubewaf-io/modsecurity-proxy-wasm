@@ -38,6 +38,10 @@ Dockerfile.bak
 # --- Dagger (generated locally) ---
 .dagger/
 
+# --- Configure-stress / CRS soak workdirs ---
+test/integration/.configure-stress/
+test/integration/.configure-crs-soak/
+
 # --- OS ---
 .DS_Store
 Thumbs.db
