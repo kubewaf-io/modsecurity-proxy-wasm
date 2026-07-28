@@ -426,18 +426,20 @@ bool loadRuleChunk(const char* label, const char* data, std::size_t size, void* 
   }
   auto* rules = static_cast<RulesSet*>(user);
   const char* lab = (label != nullptr && label[0] != '\0') ? label : "(anonymous)";
-  // Progress log — if Envoy dies with "unreachable" right after a label, that chunk is the culprit.
-  {
+  // Path B CRS is many small "inline-directives" chunks. Logging every one floods
+  // envoy.log and makes go-ftw marker scans O(log size)×tests (multi-minute suites).
+  // Keep progress logs for catalog Includes; silent success for inline batches.
+  const bool log_progress = std::strcmp(lab, "inline-directives") != 0;
+  if (log_progress) {
     std::ostringstream fields;
     fields << "\"label\":\"" << jsonEscape(lab) << "\",\"bytes\":" << size
            << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(wasmHeapBytes());
     logJson(false, "rules_loading", fields.str());
+    logHeapSample("rules_loading", lab, size);
   }
-  logHeapSample("rules_loading", lab, size);
-  // Always log a short preview for small inline chunks (custom user rules).
-  if (size > 0 && size < 512) {
+  // Short preview only for small non-inline chunks (debug custom Includes).
+  if (log_progress && size > 0 && size < 512) {
     std::string preview(data, size);
-    // Collapse newlines so the JSON string stays single-line.
     for (char& c : preview) {
       if (c == '\n' || c == '\r') c = ' ';
     }
@@ -470,13 +472,13 @@ bool loadRuleChunk(const char* label, const char* data, std::size_t size, void* 
     logJson(true, "rules_load_failed", fields.str());
     return false;
   }
-  {
+  if (log_progress) {
     std::ostringstream fields;
     fields << "\"label\":\"" << jsonEscape(lab) << "\""
            << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(wasmHeapBytes());
     logJson(false, "rules_loaded", fields.str());
+    logHeapSample("rules_loaded", lab, size);
   }
-  logHeapSample("rules_loaded", lab, size);
   return true;
 }
 

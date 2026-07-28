@@ -43,8 +43,8 @@ fi
 echo ""
 echo "[Ok] Got status code $status_code. Ready to run go-ftw."
 
-# Envoy wasm logs are flushed asynchronously; go-ftw marker retries are fast.
-sleep "${FTW_MARKER_SETTLE:-5}"
+# Brief settle so the first marker is not raced (was 5s; tee makes logs immediate).
+sleep "${FTW_MARKER_SETTLE:-1}"
 
 FTW_CLOUDMODE="${FTW_CLOUDMODE:-false}"
 FTW_INCLUDE_ARG=""
@@ -52,14 +52,18 @@ if [ -n "${FTW_INCLUDE:-}" ]; then
   FTW_INCLUDE_ARG="-i ${FTW_INCLUDE}"
 fi
 
-# Envoy wasm logs flush slowly; rate-limit marker retries so they span the delay.
-FTW_RATE_LIMIT="${FTW_RATE_LIMIT:-300ms}"
+# Marker sync. With line-buffered tee (see docker-compose), markers appear in ~ms
+# so a short budget is enough. Old --log-path needed 300ms×40 (~12s) for ~8s flush lag.
+FTW_RATE_LIMIT="${FTW_RATE_LIMIT:-50ms}"
 FTW_MAX_MARKER_RETRIES="${FTW_MAX_MARKER_RETRIES:-40}"
+FTW_READ_TIMEOUT="${FTW_READ_TIMEOUT:-5s}"
+
+echo "[go-ftw] rate-limit=$FTW_RATE_LIMIT max-marker-retries=$FTW_MAX_MARKER_RETRIES include=${FTW_INCLUDE:-*}"
 
 # shellcheck disable=SC2086
 /ftw run -d coreruleset/tests/regression/tests \
   --config ftw.yml \
-  --read-timeout=10s \
+  --read-timeout="$FTW_READ_TIMEOUT" \
   --rate-limit="$FTW_RATE_LIMIT" \
   --max-marker-retries="$FTW_MAX_MARKER_RETRIES" \
   --cloud="$FTW_CLOUDMODE" \

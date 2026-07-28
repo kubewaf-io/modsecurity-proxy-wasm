@@ -128,6 +128,10 @@ compose() {
   ENVOY_IMAGE="$ENVOY_IMAGE" \
   FTW_CLOUDMODE="$FTW_CLOUDMODE" \
   FTW_INCLUDE="$FTW_INCLUDE" \
+  FTW_RATE_LIMIT="${FTW_RATE_LIMIT:-50ms}" \
+  FTW_MAX_MARKER_RETRIES="${FTW_MAX_MARKER_RETRIES:-40}" \
+  FTW_MARKER_SETTLE="${FTW_MARKER_SETTLE:-1}" \
+  FTW_READ_TIMEOUT="${FTW_READ_TIMEOUT:-5s}" \
   FTW_ENVOY_YAML="${FTW_ENVOY_YAML:-$FTW_DIR/envoy.yaml}" \
   "${COMPOSE[@]}" -f "$FTW_DIR/docker-compose.yml" -p "$COMPOSE_PROJECT" "$@"
 }
@@ -144,6 +148,7 @@ trap cleanup EXIT
 echo "==> CRS go-ftw regression (Path B) CRS_VERSION=$CRS_VERSION go-ftw=$GO_FTW_VERSION"
 echo "==> WASM: $WASM"
 echo "==> Envoy: $ENVOY_IMAGE"
+echo "==> marker: rate=${FTW_RATE_LIMIT:-50ms} retries=${FTW_MAX_MARKER_RETRIES:-40} settle=${FTW_MARKER_SETTLE:-1}"
 if [[ -n "$FTW_INCLUDE" ]]; then
   echo "==> FTW_INCLUDE: $FTW_INCLUDE"
 fi
@@ -176,25 +181,28 @@ prime_waf_from_host() {
 }
 
 wait_for_waf_logs() {
-  local ctr vol retries
-  ctr="${COMPOSE[0]}"
-  vol="$(log_volume)"
-  retries=90
+  # Envoy is started with --log-path, so plugin lines are in the file volume only
+  # (not in `docker logs`). Use `docker cp` instead of spawning alpine each poll.
+  local retries=45
+  local envoy_ctr="${COMPOSE_PROJECT}-envoy-1"
+  local ctr="${COMPOSE[0]}"
+  local tmp
+  tmp="$(mktemp)"
   echo "==> Waiting for modsecurity-proxy-wasm JSON rule_match lines in envoy.log"
   while [[ "$retries" -gt 0 ]]; do
-    # Pure JSON logs: {"event":"rule_match",...,"id":N,...}
-    if "$ctr" run --rm -v "${vol}:/logs:ro" docker.io/library/alpine:3.20 \
-        grep -qE '"event"[[:space:]]*:[[:space:]]*"rule_match"' /logs/envoy.log 2>/dev/null; then
+    if "$ctr" cp "${envoy_ctr}:/home/envoy/logs/envoy.log" "$tmp" 2>/dev/null \
+        && grep -qE '"event"[[:space:]]*:[[:space:]]*"rule_match"' "$tmp" 2>/dev/null; then
+      rm -f "$tmp"
       return 0
     fi
     curl -sf -H "Host: localhost" -H "X-CRS-Test: ftw-wait" \
       "http://127.0.0.1:${FTW_HOST_PORT}/status/200" -o /dev/null || true
-    sleep 2
+    sleep 1
     retries=$((retries - 1))
   done
   echo "ERROR: timeout waiting for WAF rule logs" >&2
-  "$ctr" run --rm -v "${vol}:/logs:ro" docker.io/library/alpine:3.20 \
-    sh -c 'tail -n 40 /logs/envoy.log' >&2 || true
+  tail -n 40 "$tmp" >&2 || true
+  rm -f "$tmp"
   return 1
 }
 
@@ -207,7 +215,7 @@ echo "==> Starting Envoy + albedo"
 compose up -d --pull missing albedo chown envoy
 wait_for_http
 # Path B full CRS configure can take a few seconds after HTTP is up.
-sleep "${FTW_STARTUP_WAIT:-15}"
+sleep "${FTW_STARTUP_WAIT:-8}"
 prime_waf_from_host
 wait_for_waf_logs
 # Use `run --no-deps` so Envoy is not recreated (recreate would wipe primed logs and

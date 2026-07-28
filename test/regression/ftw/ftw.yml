@@ -1,6 +1,8 @@
 ---
 logfile: '/home/envoy/logs/envoy.log'
 logmarkerheadername: X-CRS-Test
+# Keep in sync with FTW_MAX_MARKER_RETRIES default in tests.sh / docker-compose
+# (CLI --max-marker-retries overrides this when set).
 maxmarkerretries: 40
 mode: default
 testoverride:

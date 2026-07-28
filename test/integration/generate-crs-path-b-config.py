@@ -140,9 +140,12 @@ def build_directives(crs: Path, profile: str, preset: str = "default") -> tuple[
 
     if preset == "ftw":
         # Engine-local go-ftw: catalog helpers + PL4 DetectionOnly marker + full CRS.
+        # Override @ftw-conf SecDebugLogLevel 3 → 0 so envoy.log stays small; go-ftw
+        # marker scans the whole file every stage and scales with log size.
         directives: list[str] = [
             "Include @demo-conf",
             "Include @ftw-conf",
+            "SecDebugLogLevel 0",
             "SecRuleEngine On",
         ]
     elif preset == "default":

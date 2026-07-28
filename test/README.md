@@ -17,6 +17,10 @@ make test-bats
 make test-configure-stress   # Path B gzip + chains + @pmFromFile; prints heap_sample ladder
 make test-regression                         # Path B CRS go-ftw (generates gzip SecLang)
 FTW_INCLUDE='^941.*' make test-regression    # XSS suite subset (CI)
+
+# Speed knobs (defaults already CI-tuned):
+#   FTW_RATE_LIMIT=100ms FTW_MAX_MARKER_RETRIES=20 FTW_MARKER_SETTLE=2
+# Raise retries if markers flake; lower rate only if logs are proven fast.
 ```
 
 

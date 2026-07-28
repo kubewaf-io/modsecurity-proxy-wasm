@@ -78,7 +78,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git g++ curl wabt
       - name: CRS go-ftw subset (XSS rules)
-        run: make test-regression FTW_INCLUDE='^941.*' ENVOY_IMAGE=envoyproxy/envoy:v1.38-latest
+        # Full 941.* (~210 stages). Speed comes from line-buffered log tee
+        # (was ~8s --log-path flush lag → ~12s/test) + quiet Wasm configure logs.
+        env:
+          ENVOY_IMAGE: envoyproxy/envoy:v1.38-latest
+          FTW_INCLUDE: "^941.*"
+          FTW_RATE_LIMIT: 50ms
+          FTW_MAX_MARKER_RETRIES: "40"
+          FTW_MARKER_SETTLE: "1"
+          FTW_STARTUP_WAIT: "8"
+          FTW_READ_TIMEOUT: 5s
+        run: make test-regression
 
   fuzz:
     runs-on: ubuntu-latest
