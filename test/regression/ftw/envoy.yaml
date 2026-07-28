@@ -1,4 +1,7 @@
-# Envoy config for CRS go-ftw regression (modsecurity-proxy-wasm).
+# Fallback Envoy config for CRS go-ftw (modsecurity-proxy-wasm).
+# Preferred path: run-ftw.sh generates Path B gzip CRS into .generated/envoy.yaml
+# (catalog is path-b only — no Include @owasp_crs*). Kept as a minimal placeholder
+# so compose still mounts a file if FTW_ENVOY_YAML is unset.
 static_resources:
   listeners:
     - address:

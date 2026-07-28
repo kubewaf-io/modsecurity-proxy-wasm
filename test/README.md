@@ -15,8 +15,10 @@ Run from repo root:
 make test-unit
 make test-bats
 make test-configure-stress   # Path B gzip + chains + @pmFromFile; prints heap_sample ladder
-make test-regression
+make test-regression                         # Path B CRS go-ftw (generates gzip SecLang)
+FTW_INCLUDE='^941.*' make test-regression    # XSS suite subset (CI)
 ```
+
 
 ### Configure stress / memory ladder (WS0–M1)
 

@@ -3,22 +3,25 @@ set -euo pipefail
 
 # CRS go-ftw regression runner for modsecurity-proxy-wasm (Envoy + albedo + go-ftw).
 #
+# Path B only: CRS rule confs are not embedded in the wasm. This script generates a
+# gzip+base64 directives_map from a local CRS checkout (Include @demo-conf + @ftw-conf
+# + full SecLang) and boots Envoy with that config — same shape as kubeWAF operator
+# injection and test/integration configure-crs-soak.
+#
 # Usage:
 #   ./test/regression/run-ftw.sh
 #   FTW_INCLUDE='^941.*' ./test/regression/run-ftw.sh          # subset of tests
 #   KEEP_RUNNING=1 ./test/regression/run-ftw.sh                # leave stack up after run
 #
-# Requires dist/modsecurity-proxy-wasm.wasm built with embedded @ftw-conf (build/rules/ftw-config.conf).
-# Rebuild after changing FTW overlays: make modsecurity-proxy-wasm.wasm  (or make image)
-#
-# NOTE: This harness still uses Path A Include @owasp_crs* in ftw/envoy.yaml, but the
-# wasm catalog is path-b only (no embedded CRS confs). Use the monorepo Path B FTW
-# target instead (make test-e2e-ftw-path-b). Engine-local Path A FTW is not supported.
+# Requires:
+#   dist/modsecurity-proxy-wasm.wasm  (path-b catalog with @ftw-conf + @crs-data)
+#   CRS tree at CRS_DIR (default: .cache/deps/crs from make deps)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 FTW_DIR="$SCRIPT_DIR/ftw"
 CRS_CACHE="$FTW_DIR/.crs-cache"
+GEN_DIR="$FTW_DIR/.generated"
 WASM="$ROOT_DIR/dist/modsecurity-proxy-wasm.wasm"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-modsecurity-proxy-wasm-ftw}"
 FTW_HOST_PORT="${FTW_HOST_PORT:-18082}"
@@ -29,15 +32,15 @@ GO_FTW_VERSION="${GO_FTW_VERSION:-2.4.0}"
 ENVOY_IMAGE="${ENVOY_IMAGE:-envoyproxy/envoy:v1.38-latest}"
 FTW_CLOUDMODE="${FTW_CLOUDMODE:-false}"
 FTW_INCLUDE="${FTW_INCLUDE:-}"
+# CRS conf profile for Path B payload: full includes RESPONSE-* (needed for many suites).
+FTW_CRS_PROFILE="${FTW_CRS_PROFILE:-full}"
+# Prefer build-tree CRS; fall back to ftw cache checkout used for test corpus.
+CRS_DIR="${CRS_DIR:-$ROOT_DIR/.cache/deps/crs}"
 
 usage() {
-  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
   exit 0
 }
-
-echo "ERROR: engine-local go-ftw expects Path A embedded CRS, but this build is path-b only." >&2
-echo "       Use monorepo: make test-e2e-ftw-path-b (structured SecRule CRs)." >&2
-exit 1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -52,8 +55,6 @@ if [[ ! -f "$WASM" ]]; then
   echo "ERROR: $WASM not found. Build first: make image  (or make modsecurity-proxy-wasm.wasm)" >&2
   exit 1
 fi
-
-
 
 # Prefer docker when both are installed: GH Actions runners ship podman but its
 # socket is often unavailable; docker compose is the reliable default there.
@@ -86,6 +87,39 @@ prepare_crs_cache() {
   echo "$CRS_VERSION" >"$marker"
 }
 
+ensure_crs_rules() {
+  # Need rules/*.conf for Path B SecLang generation.
+  if [[ -d "$CRS_DIR/rules" ]]; then
+    return 0
+  fi
+  # After prepare_crs_cache, CRS_CACHE has a full CRS tree including rules/.
+  if [[ -d "$CRS_CACHE/rules" ]]; then
+    CRS_DIR="$CRS_CACHE"
+    return 0
+  fi
+  echo "ERROR: CRS rules not found at $CRS_DIR/rules (and not in $CRS_CACHE)." >&2
+  echo "       Run: make deps   # or set CRS_DIR=/path/to/coreruleset" >&2
+  exit 1
+}
+
+generate_path_b_envoy() {
+  mkdir -p "$GEN_DIR"
+  local envoy_out="$GEN_DIR/envoy.yaml"
+  local plugin_out="$GEN_DIR/plugin-ftw.json"
+  echo "==> Generating Path B CRS plugin config (preset=ftw profile=${FTW_CRS_PROFILE})"
+  python3 "$ROOT_DIR/test/integration/generate-crs-path-b-config.py" \
+    --crs "$CRS_DIR" \
+    --profile "$FTW_CRS_PROFILE" \
+    --preset ftw \
+    --envoy-layout ftw \
+    --vm-id "modsecurity_proxy_wasm_ftw" \
+    --out-json "$plugin_out" \
+    --out-envoy "$envoy_out" \
+    --out-stats "$GEN_DIR/crs-path-b-stats.json"
+  FTW_ENVOY_YAML="$envoy_out"
+  export FTW_ENVOY_YAML
+}
+
 compose() {
   MODSECURITY_PROXY_WASM="$WASM" \
   CRS_CACHE="$CRS_CACHE" \
@@ -94,6 +128,7 @@ compose() {
   ENVOY_IMAGE="$ENVOY_IMAGE" \
   FTW_CLOUDMODE="$FTW_CLOUDMODE" \
   FTW_INCLUDE="$FTW_INCLUDE" \
+  FTW_ENVOY_YAML="${FTW_ENVOY_YAML:-$FTW_DIR/envoy.yaml}" \
   "${COMPOSE[@]}" -f "$FTW_DIR/docker-compose.yml" -p "$COMPOSE_PROJECT" "$@"
 }
 
@@ -106,7 +141,7 @@ cleanup() {
 
 trap cleanup EXIT
 
-echo "==> CRS go-ftw regression (CRS_VERSION=$CRS_VERSION, go-ftw=$GO_FTW_VERSION)"
+echo "==> CRS go-ftw regression (Path B) CRS_VERSION=$CRS_VERSION go-ftw=$GO_FTW_VERSION"
 echo "==> WASM: $WASM"
 echo "==> Envoy: $ENVOY_IMAGE"
 if [[ -n "$FTW_INCLUDE" ]]; then
@@ -119,12 +154,13 @@ log_volume() {
 
 wait_for_http() {
   local url="http://127.0.0.1:${FTW_HOST_PORT}/"
-  local retries=60
+  local retries=90
   echo "==> Waiting for Envoy HTTP (${url})"
   until curl -sf -o /dev/null "$url"; do
     retries=$((retries - 1))
     if [[ "$retries" -le 0 ]]; then
       echo "ERROR: timeout waiting for Envoy HTTP" >&2
+      compose logs --tail=80 envoy >&2 || true
       return 1
     fi
     sleep 2
@@ -158,16 +194,20 @@ wait_for_waf_logs() {
   done
   echo "ERROR: timeout waiting for WAF rule logs" >&2
   "$ctr" run --rm -v "${vol}:/logs:ro" docker.io/library/alpine:3.20 \
-    sh -c 'tail -n 30 /logs/envoy.log' >&2 || true
+    sh -c 'tail -n 40 /logs/envoy.log' >&2 || true
   return 1
 }
 
 prepare_crs_cache
+ensure_crs_rules
+generate_path_b_envoy
+
 compose down -v --remove-orphans >/dev/null 2>&1 || true
 echo "==> Starting Envoy + albedo"
 compose up -d --pull missing albedo chown envoy
 wait_for_http
-sleep "${FTW_STARTUP_WAIT:-10}"
+# Path B full CRS configure can take a few seconds after HTTP is up.
+sleep "${FTW_STARTUP_WAIT:-15}"
 prime_waf_from_host
 wait_for_waf_logs
 # Use `run --no-deps` so Envoy is not recreated (recreate would wipe primed logs and

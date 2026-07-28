@@ -42,6 +42,10 @@ Dockerfile.bak
 test/integration/.configure-stress/
 test/integration/.configure-crs-soak/
 
+# --- go-ftw generated Path B envoy + CRS test cache ---
+test/regression/ftw/.generated/
+test/regression/ftw/.crs-cache/
+
 # --- OS ---
 .DS_Store
 Thumbs.db
