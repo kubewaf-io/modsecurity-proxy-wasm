@@ -16,6 +16,9 @@ MODSECURITY_MEMORY_KEYS = {
     "modsecurity_proxy_wasm_memory_wasm_heap_bytes": "wasm_heap_bytes",
 }
 
+# Wasm page size (linear memory unit).
+WASM_PAGE_BYTES = 64 * 1024
+
 
 def _parse_prometheus_gauges(path: Path, key_map: dict[str, str]) -> dict[str, int]:
     out: dict[str, int] = {}
@@ -40,6 +43,111 @@ def parse_prometheus_memory(path: Path) -> dict[str, int]:
 
 def parse_modsecurity_memory(path: Path) -> dict[str, int]:
     return _parse_prometheus_gauges(path, MODSECURITY_MEMORY_KEYS)
+
+
+def _read_leb128(data: bytes, offset: int) -> tuple[int, int]:
+    """Return (value, new_offset) for an unsigned LEB128 integer."""
+    result = 0
+    shift = 0
+    while offset < len(data):
+        byte = data[offset]
+        offset += 1
+        result |= (byte & 0x7F) << shift
+        if (byte & 0x80) == 0:
+            return result, offset
+        shift += 7
+        if shift > 35:
+            break
+    raise ValueError("truncated LEB128")
+
+
+def parse_wasm_linear_memory(path: Path | str | None) -> dict[str, int]:
+    """Parse the Memory section of a .wasm binary into byte limits.
+
+    Returns keys:
+      initial_memory_bytes, maximum_memory_bytes (0 if unbounded),
+      initial_memory_pages, maximum_memory_pages
+    Empty dict if path missing or unparseable.
+    """
+    if path is None:
+        return {}
+    p = Path(path)
+    if not p.is_file():
+        return {}
+    data = p.read_bytes()
+    if len(data) < 8 or data[:4] != b"\x00asm":
+        return {}
+    offset = 8  # magic + version
+    try:
+        while offset < len(data):
+            section_id = data[offset]
+            offset += 1
+            section_size, offset = _read_leb128(data, offset)
+            section_end = offset + section_size
+            if section_id == 5:  # Memory section
+                count, offset = _read_leb128(data, offset)
+                if count < 1:
+                    return {}
+                flags = data[offset]
+                offset += 1
+                initial_pages, offset = _read_leb128(data, offset)
+                max_pages = 0
+                if flags & 0x01:
+                    max_pages, offset = _read_leb128(data, offset)
+                return {
+                    "initial_memory_pages": initial_pages,
+                    "maximum_memory_pages": max_pages,
+                    "initial_memory_bytes": initial_pages * WASM_PAGE_BYTES,
+                    "maximum_memory_bytes": max_pages * WASM_PAGE_BYTES if max_pages else 0,
+                }
+            offset = section_end
+    except (ValueError, IndexError):
+        return {}
+    return {}
+
+
+def parse_heap_samples_from_log(path: Path | str | None) -> dict:
+    """Extract heap_sample / config_applied stages from Envoy plugin logs.
+
+    Looks for JSON lines with \"event\":\"heap_sample\" or config_applied that
+    carry wasm_heap_bytes. Returns peak + per-stage map.
+    """
+    if path is None:
+        return {}
+    p = Path(path)
+    if not p.is_file():
+        return {}
+    stages: dict[str, int] = {}
+    peak = 0
+    # Match both pretty and compact JSON fragments in Envoy log lines.
+    stage_re = re.compile(
+        r'"event"\s*:\s*"(heap_sample|config_applied|configure_start|crs_data_ready|rules_loaded)"'
+    )
+    heap_re = re.compile(r'"wasm_heap_bytes"\s*:\s*(\d+)')
+    stage_name_re = re.compile(r'"stage"\s*:\s*"([^"]+)"')
+    for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "wasm_heap_bytes" not in line:
+            continue
+        if not stage_re.search(line) and '"event"' not in line:
+            continue
+        hm = heap_re.search(line)
+        if not hm:
+            continue
+        heap = int(hm.group(1))
+        peak = max(peak, heap)
+        sm = stage_name_re.search(line)
+        if sm:
+            stages[sm.group(1)] = heap
+        else:
+            em = re.search(r'"event"\s*:\s*"([^"]+)"', line)
+            if em:
+                stages[em.group(1)] = heap
+    out: dict = {}
+    if peak:
+        out["peak_wasm_heap_bytes"] = peak
+    if stages:
+        out["stages"] = stages
+    return out
 
 
 def parse_docker_mem_usage(value: str) -> tuple[int | None, int | None]:
@@ -115,14 +223,22 @@ def load_run_memory(run_dir: Path) -> dict:
 def memory_mb(snapshot: dict) -> dict[str, float | None]:
     envoy = snapshot.get("envoy_after") or snapshot.get("after", {}).get("envoy", {})
     modsec = snapshot.get("modsecurity_after") or snapshot.get("after", {}).get("modsecurity", {})
+    modsec_before = snapshot.get("modsecurity_before") or {}
     peak = snapshot.get("peak_container") or snapshot.get("peak", {})
+    linear = snapshot.get("wasm_linear_memory") or {}
     allocated = envoy.get("allocated_bytes")
     physical = envoy.get("physical_size_bytes")
     rss = peak.get("container_rss_bytes")
     wasm_heap = modsec.get("wasm_heap_bytes")
+    wasm_heap_before = modsec_before.get("wasm_heap_bytes")
+    initial = linear.get("initial_memory_bytes")
     return {
         "envoy_allocated_mb": allocated / (1024 * 1024) if allocated else None,
         "envoy_physical_mb": physical / (1024 * 1024) if physical else None,
         "container_peak_rss_mb": rss / (1024 * 1024) if rss else None,
         "modsecurity_wasm_heap_mb": wasm_heap / (1024 * 1024) if wasm_heap else None,
+        "modsecurity_wasm_heap_before_mb": (
+            wasm_heap_before / (1024 * 1024) if wasm_heap_before else None
+        ),
+        "wasm_initial_memory_mb": initial / (1024 * 1024) if initial else None,
     }
