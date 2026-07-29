@@ -190,7 +190,9 @@ $(STAMPS_DIR)/libxml2: | $(STAMPS_DIR)/emsdk
 	rm -rf $(LIBXML2_SRC) $(LIBXML2_EM)
 	git clone --branch "$(LIBXML2_VERSION)" https://github.com/GNOME/libxml2.git $(LIBXML2_SRC)
 	test "$$(git -C $(LIBXML2_SRC) rev-parse HEAD)" = "$(LIBXML2_SHA)"
-	cd $(LIBXML2_SRC) && ./autogen.sh
+	# Skip autogen's native configure: on Debian Trixie it probes python-3.13
+	# pkg-config (needs python3-dev) even though we pass --without-python below.
+	cd $(LIBXML2_SRC) && NOCONFIGURE=1 ./autogen.sh
 	cd $(LIBXML2_SRC) && $(EMS_ENV) emconfigure ./configure \
 		--host=wasm32-unknown-emscripten \
 		--prefix=$(LIBXML2_EM) \
