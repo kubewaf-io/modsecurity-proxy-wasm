@@ -28,6 +28,11 @@
       "versioning": "loose"
     },
     {
+      "description": "Group libxml2 tag and commit SHA",
+      "matchDepNames": ["GNOME/libxml2"],
+      "groupName": "libxml2"
+    },
+    {
       "description": "Group proxy-wasm-cpp-sdk across Makefile, shell.nix, and versions.env",
       "matchDepNames": ["proxy-wasm/proxy-wasm-cpp-sdk"],
       "groupName": "proxy-wasm-cpp-sdk"
