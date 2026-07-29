@@ -152,15 +152,49 @@ TEST(WafConfig, ParseMetricLabels) {
 
 TEST(WafConfig, ParseMetricToggles) {
   const std::string cfg = R"({
-    "metrics_per_rule_id": false,
-    "metrics_rule_tags": false,
+    "metrics_per_rule_id": true,
+    "metrics_rule_tags": true,
     "directives_map": {"default": ["SecRuleEngine On"]},
     "default_directives": "default"
   })";
   WafMetricOptions opts;
   ASSERT_TRUE(parseWafMetricOptions(cfg, opts));
+  EXPECT_TRUE(opts.per_rule_id);
+  EXPECT_TRUE(opts.rule_tags);
+}
+
+TEST(WafConfig, MetricDefaultsAreSlim) {
+  const std::string cfg = R"({
+    "directives_map": {"default": ["SecRuleEngine On"]},
+    "default_directives": "default"
+  })";
+  WafMetricOptions opts;
+  ASSERT_TRUE(parseWafMetricOptions(cfg, opts));
+  EXPECT_TRUE(opts.enabled);
   EXPECT_FALSE(opts.per_rule_id);
   EXPECT_FALSE(opts.rule_tags);
+  EXPECT_FALSE(opts.dual_prefix);
+}
+
+TEST(WafConfig, FullwidthNormalizeDefaultsOn) {
+  const std::string cfg = R"({
+    "directives_map": {"default": ["SecRuleEngine On"]},
+    "default_directives": "default"
+  })";
+  WafPluginOptions opts;
+  ASSERT_TRUE(parseWafPluginOptions(cfg, opts));
+  EXPECT_TRUE(opts.fullwidth_normalize);
+}
+
+TEST(WafConfig, FullwidthNormalizeCanDisable) {
+  const std::string cfg = R"({
+    "transforms": {"fullwidth_normalize": false},
+    "directives_map": {"default": ["SecRuleEngine On"]},
+    "default_directives": "default"
+  })";
+  WafPluginOptions opts;
+  ASSERT_TRUE(parseWafPluginOptions(cfg, opts));
+  EXPECT_FALSE(opts.fullwidth_normalize);
 }
 
 TEST(WafConfig, ParseNestedMetricsObject) {
@@ -209,9 +243,24 @@ TEST(WafConfig, ParsePluginOptionsKubeWAF) {
   EXPECT_FALSE(opts.allow_fallback);
   EXPECT_FALSE(wafConfigAllowsFallback(cfg));
   EXPECT_FALSE(opts.metrics.per_rule_id);
+  // kubeWAF identity enables dual_prefix unless metrics.dual_prefix is explicit false.
+  EXPECT_TRUE(opts.metrics.dual_prefix);
   EXPECT_EQ(opts.block.message, "blocked by kubeWAF");
   EXPECT_TRUE(opts.block.add_rule_id_header);
   EXPECT_EQ(opts.block.rule_id_header, "x-kubewaf-rule-id");
+}
+
+TEST(WafConfig, KubeWafCanDisableDualPrefix) {
+  const std::string cfg = R"({
+    "mode": "kubewaf",
+    "config_id": "kubewaf/shop/shop-waf",
+    "metrics": {"dual_prefix": false},
+    "directives_map": {"default": ["SecRuleEngine On"]},
+    "default_directives": "default"
+  })";
+  WafPluginOptions opts;
+  ASSERT_TRUE(parseWafPluginOptions(cfg, opts));
+  EXPECT_FALSE(opts.metrics.dual_prefix);
 }
 
 TEST(WafConfig, KubeWafDefaultsIncludeExpands) {

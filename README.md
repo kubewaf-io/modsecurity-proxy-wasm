@@ -78,30 +78,27 @@ lines the same way as a plain string array. Small configs stay uncompressed arra
     "engine": "modsecurity",
     "owner": "modsecurity-proxy-wasm"
   },
-  "metrics": { "enabled": true, "per_rule_id": true, "rule_tags": true },
+  "metrics": { "enabled": true, "per_rule_id": false, "rule_tags": false, "dual_prefix": true },
+  "transforms": { "fullwidth_normalize": true },
   "block": { "message": "blocked by kubeWAF" }
 }
 ```
 
-**Rules catalog (build-time embed)** — default **`CATALOG_MODE=path-b`** ships helpers + CRS phrase lists only. CRS *rule confs* are **not** in the wasm; kubeWAF Path B loads structured SecRule CRs as inline SecLang. Phrase files stay embedded so `@pmFromFile scanners-user-agents.data` etc. resolve without a real filesystem.
+**Rules catalog (build-time embed)** — **path-b only**. The wasm ships helpers + CRS phrase lists; CRS *rule confs* are never embedded. kubeWAF loads structured SecRule CRs as inline SecLang. Phrase files stay embedded so `@pmFromFile scanners-user-agents.data` etc. resolve without a real filesystem.
 
-| Virtual include | path-b (default) | full (`CATALOG_MODE=full`) |
-|-----------------|------------------|----------------------------|
-| `@kubewaf-defaults` | yes | yes |
-| `@demo-conf` / `@ftw-conf` | yes | yes |
-| `@crs-data/*.data` | yes (`@pmFromFile`) | yes |
-| `@crs-setup-conf` | no | yes (Path A) |
-| `@owasp_crs/*.conf` | no | yes (Path A / `crsEnable`) |
+| Virtual include | Embedded |
+|-----------------|----------|
+| `@kubewaf-defaults` | yes |
+| `@demo-conf` / `@ftw-conf` | yes |
+| `@crs-data/*.data` | yes (`@pmFromFile`) |
+| `@crs-setup-conf` | no |
+| `@owasp_crs/*.conf` | no |
 
 ```bash
-# Default (Path B): smaller wasm, no CRS rule confs
 make modsecurity-proxy-wasm.wasm
-
-# Optional Path A engine-embedded CRS
-make modsecurity-proxy-wasm.wasm CATALOG_MODE=full
 ```
 
-Path B (operator) plugin config looks like:
+Path B plugin config (operator / tests) looks like:
 
 ```json
 {
@@ -113,22 +110,6 @@ Path B (operator) plugin config looks like:
       "SecRule ... \"id:913100,...@pmFromFile scanners-user-agents.data...\""
     ]
   }
-}
-```
-
-Legacy Path A only with `CATALOG_MODE=full`:
-
-```json
-{
-  "directives_map": {
-    "crs": [
-      "Include @kubewaf-defaults",
-      "SecRuleEngine On",
-      "Include @crs-setup-conf",
-      "Include @owasp_crs/*.conf"
-    ]
-  },
-  "default_directives": "crs"
 }
 ```
 
@@ -159,7 +140,8 @@ make extract-wasm    # → dist/modsecurity-proxy-wasm.wasm
 
 ```bash
 make test-bats         # Envoy smoke
-make test-regression   # CRS go-ftw
+make test-regression                         # full CRS go-ftw (Path B; large ignore list)
+FTW_INCLUDE='^941.*' make test-regression    # CI XSS subset (must stay green)
 make test-unit         # waf_config
 ```
 

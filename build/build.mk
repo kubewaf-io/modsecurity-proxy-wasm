@@ -44,15 +44,23 @@ MODSEC_CONFIGURE_FLAGS := \
 	--disable-debug-logs --disable-mutex-on-pm --without-lmdb --without-maxmind \
 	--without-ssdeep
 
-# Memory: full OWASP CRS / Path B SecRules + @pmFromFile automata are heavy.
-# 64MB initial was tight under Envoy V8 (exceptions off → bad_alloc as unreachable).
-# Do not put # comments inside this continued assignment — make strips them badly.
+# Memory (Envoy V8 reserves Wasm linear memory *per worker VM*):
+# - alpha9 raised INITIAL 16→64MB after CRS configure hit "unreachable".
+# - alpha11 raised INITIAL 64→128MB for Path B chains + @pmFromFile automata.
+# - Validated 32MB (2026-07-28): synthetic stress + full CRS Path B soak under
+#   Envoy V8; heap stayed at floor (no growth). Raise to 64MB/128MB if Path B OOM.
+# - ALLOW_MEMORY_GROWTH is on: can grow toward MAXIMUM under heavy loads.
+# Do not put # comments inside the continued EMSCRIPTEN_LINK_OPTS assignment.
+INITIAL_MEMORY ?= 32MB
+MAXIMUM_MEMORY ?= 512MB
+STACK_SIZE     ?= 4MB
+
 EMSCRIPTEN_LINK_OPTS := --no-entry \
 	-sSTANDALONE_WASM -sEXPORTED_FUNCTIONS=_malloc -sFILESYSTEM=1 \
 	-sALLOW_MEMORY_GROWTH=1 \
-	-sINITIAL_MEMORY=128MB \
-	-sMAXIMUM_MEMORY=512MB \
-	-sSTACK_SIZE=4MB \
+	-sINITIAL_MEMORY=$(INITIAL_MEMORY) \
+	-sMAXIMUM_MEMORY=$(MAXIMUM_MEMORY) \
+	-sSTACK_SIZE=$(STACK_SIZE) \
 	-sDISABLE_EXCEPTION_CATCHING=1 \
 	-sUSE_ZLIB=1
 
@@ -199,9 +207,10 @@ $(STAMPS_DIR)/crs:
 	git clone --depth 1 --branch "$(CRS_VERSION)" https://github.com/coreruleset/coreruleset.git $(CRS_DIR)
 	touch $@
 
-# Catalog mode: path-b (default) embeds helpers + @crs-data only (no CRS rule confs).
-# full embeds Path A @owasp_crs/*.conf + @crs-setup-conf (larger wasm).
-CATALOG_MODE ?= path-b
+# Catalog is path-b only: helpers + @crs-data phrase lists (no CRS rule confs).
+# CRS rules are supplied at runtime as structured SecRule CRs / inline SecLang (Path B).
+# Do not reintroduce CATALOG_MODE=full here — Path A embedding is intentionally removed.
+CATALOG_MODE := path-b
 
 $(GENERATED_CC) $(GENERATED_H): $(STAMPS_DIR)/crs \
 		$(BUILD_RULES_DIR)/demo-conf.conf \
@@ -210,7 +219,6 @@ $(GENERATED_CC) $(GENERATED_H): $(STAMPS_DIR)/crs \
 		$(BUILD_SCRIPTS_DIR)/generate_rules_catalog.py
 	@mkdir -p $(BUILD_DIR)/src/generated
 	python3 $(BUILD_SCRIPTS_DIR)/generate_rules_catalog.py \
-		--mode $(CATALOG_MODE) \
 		--crs $(CRS_DIR) \
 		--demo $(BUILD_RULES_DIR)/demo-conf.conf \
 		--ftw $(BUILD_RULES_DIR)/ftw-config.conf \

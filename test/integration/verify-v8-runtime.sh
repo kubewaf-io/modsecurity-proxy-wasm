@@ -11,11 +11,20 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 [[ -f "$WASM" ]] || fail "missing $WASM"
 
 echo "==> Checking proxy-wasm exports (V8 / Emscripten ABI)"
-wasm_dump=$(wasm-objdump -x "$WASM" 2>&1)
-[[ "$wasm_dump" == *"<proxy_on_configure>"* ]] || fail "missing proxy_on_configure export"
-[[ "$wasm_dump" == *"<proxy_on_request_headers>"* ]] || fail "missing proxy_on_request_headers export"
-[[ "$wasm_dump" != *"getaddrinfo"* ]] || fail "module imports getaddrinfo (breaks envoy.wasm.runtime.v8 load)"
-echo "    proxy-wasm exports OK"
+if ! command -v wasm-objdump >/dev/null 2>&1; then
+  echo "    WARN: wasm-objdump not found; skipping binary ABI checks"
+else
+  wasm_dump=$(wasm-objdump -x "$WASM" 2>&1)
+  [[ "$wasm_dump" == *"<proxy_on_configure>"* ]] || fail "missing proxy_on_configure export"
+  [[ "$wasm_dump" == *"<proxy_on_request_headers>"* ]] || fail "missing proxy_on_request_headers export"
+  # Host imports Envoy V8 does not provide (emscripten standalone turns them into env.*).
+  imports=$(wasm-objdump -j Import -x "$WASM" 2>/dev/null || true)
+  if grep -qE 'getaddrinfo|__syscall_' <<<"$imports"; then
+    fail "forbidden env import (Envoy V8 cannot load). Add/fix src/wasm_stubs.c. Imports:
+$imports"
+  fi
+  echo "    proxy-wasm exports OK (no forbidden env imports)"
+fi
 
 if curl -sf --max-time 2 "http://127.0.0.1:${ADMIN_PORT}/ready" >/dev/null 2>&1; then
   echo "==> Checking live Envoy admin stats on :${ADMIN_PORT}"

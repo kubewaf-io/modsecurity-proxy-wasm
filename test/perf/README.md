@@ -14,10 +14,10 @@ Coraza wasm is downloaded automatically to `test/perf/.coraza/main.wasm` (pinned
 ## Quick start
 
 ```bash
-# modsecurity-proxy-wasm full CRS only
+# modsecurity-proxy-wasm path-b (profile name: modsecurity-proxy-wasm-full)
 make test-perf-k6
 
-# Side-by-side: modsecurity-proxy-wasm-full vs coraza-full (same scenario)
+# Side-by-side: modsecurity-proxy-wasm vs coraza (same scenario)
 make test-perf-k6-compare
 
 # coraza only
@@ -33,13 +33,13 @@ PERF_PROFILE=baseline make test-perf-k6
 |---------|-----|--------|------------|
 | `baseline` | none | Envoy router only | — |
 | `wasm-minimal` | modsecurity-proxy-wasm | `SecRuleEngine Off` | `coraza-minimal` |
-| `modsecurity-proxy-wasm-full` | modsecurity-proxy-wasm | Full CRS, debug off | `coraza-full` |
+| `modsecurity-proxy-wasm-full` | modsecurity-proxy-wasm | Path B helpers + same inline smoke rules, debug off | `coraza-full` |
 | `coraza-minimal` | coraza-proxy-wasm | `SecRuleEngine Off` | `wasm-minimal` |
-| `coraza-full` | coraza-proxy-wasm | Embedded CRS v4.14, debug off | `modsecurity-proxy-wasm-full` |
+| `coraza-full` | coraza-proxy-wasm | Same inline smoke rules (no CRS), debug off | `modsecurity-proxy-wasm-full` |
 
 Configs: `test/perf/profiles/`.
 
-**Note:** CRS versions differ (modsecurity-proxy-wasm pins v4.27 at build time; coraza 0.6.0 embeds v4.14). Treat comparisons as directional, not byte-identical.
+**Note:** Both “full” profiles use the **same two inline SecRules** (XSS + SQLi smoke). Neither loads OWASP CRS, so latency/throughput compare engines under equal rule work — not full CRS coverage.
 
 ## Compare modsecurity-proxy-wasm vs coraza
 
@@ -109,6 +109,11 @@ Each run: `test/perf/results/run-<timestamp>-<profile>-<scenario>/`
 - `k6-compare.html` (after `--compare` / CI smoke pairs)
 - `envoy-stats-*.txt`, `envoy-prometheus-*.txt`
 - `memory-snapshot.json`, `memory-samples.log` (peak container RSS during k6)
+- `memory-snapshot.json` also includes (WS0):
+  - `wasm_linear_memory` — link-time INITIAL/MAXIMUM from the `.wasm` Memory section
+  - `modsecurity_before` / `modsecurity_after` — plugin `wasm_heap_bytes` gauges
+  - `wasm_heap_after_configure` / `wasm_heap_after_k6`
+  - `configure_heap_ladder` — peak + per-stage map when Envoy logs with `heap_sample` are present
 - `modsecurity-proxy-wasm-metrics-*.txt` (modsecurity-proxy-wasm profiles)
 - `coraza-wasm-metrics-*.txt` (coraza profiles — `waf_filter_tx_*`)
 
@@ -128,7 +133,12 @@ make test-perf-release-compare # k6: previous GitHub release wasm vs current tag
 make test-perf-release         # smoke perf + release compare + chart bundle
 ```
 
-Each run directory also gets `memory-snapshot.json` (peak container RSS + `modsecurity_proxy_wasm.memory.wasm_heap_bytes` from the plugin gauge).
+Each run directory also gets `memory-snapshot.json` (peak container RSS +
+`modsecurity_proxy_wasm.memory.wasm_heap_bytes` + link-time linear memory when
+`PERF_WASM` points at the binary under test).
+
+**Configure-only heap gate** (no k6): `make test-configure-stress` — see
+[test/README.md](../README.md).
 
 Release compare downloads the previous tag’s `modsecurity-proxy-wasm.wasm` from GitHub Releases and benchmarks `benign-get` + `benign-post-1k` against the current build. For private repos, set `GITHUB_TOKEN` (or `GH_TOKEN`); CI already passes `secrets.GITHUB_TOKEN` into the release publish job.
 

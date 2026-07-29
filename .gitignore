@@ -38,6 +38,14 @@ Dockerfile.bak
 # --- Dagger (generated locally) ---
 .dagger/
 
+# --- Configure-stress / CRS soak workdirs ---
+test/integration/.configure-stress/
+test/integration/.configure-crs-soak/
+
+# --- go-ftw generated Path B envoy + CRS test cache ---
+test/regression/ftw/.generated/
+test/regression/ftw/.crs-cache/
+
 # --- OS ---
 .DS_Store
 Thumbs.db

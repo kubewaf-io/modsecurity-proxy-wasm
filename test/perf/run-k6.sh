@@ -313,7 +313,10 @@ run_one() {
   ADMIN_URL="http://127.0.0.1:${PERF_ADMIN_PORT}" \
     "$SCRIPT_DIR/collect-stats.sh" after "$run_dir"
   chmod +x "$SCRIPT_DIR/finalize-memory.sh"
-  PERF_ENVOY_CONTAINER="$PERF_ENVOY_CONTAINER" "$SCRIPT_DIR/finalize-memory.sh" "$run_dir"
+  # PERF_WASM: parse link-time INITIAL/MAXIMUM into memory-snapshot.json (WS0).
+  PERF_ENVOY_CONTAINER="$PERF_ENVOY_CONTAINER" \
+    PERF_WASM="${PERF_WASM:-$WASM}" \
+    "$SCRIPT_DIR/finalize-memory.sh" "$run_dir"
 
   if [[ "$profile" == "modsecurity-proxy-wasm-full" ]]; then
     if ! grep -q 'modsecurity_proxy_wasm_tx_total' "$run_dir/envoy-prometheus-after.txt" 2>/dev/null; then
