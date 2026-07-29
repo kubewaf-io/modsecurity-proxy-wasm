@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
           if-no-files-found: error
 
   unit:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - name: Install build deps
@@ -38,7 +38,7 @@ jobs:
         run: make deps-test test-unit
 
   policy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - name: getentropy policy check
@@ -46,7 +46,7 @@ jobs:
 
   integration:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - name: Download modsecurity-proxy-wasm.wasm
@@ -65,7 +65,7 @@ jobs:
 
   ftw-subset:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - name: Download modsecurity-proxy-wasm.wasm
@@ -81,7 +81,7 @@ jobs:
         run: make test-regression FTW_INCLUDE='^941.*' ENVOY_IMAGE=envoyproxy/envoy:v1.38-latest
 
   fuzz:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - name: Install clang
@@ -91,7 +91,7 @@ jobs:
 
   perf:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
