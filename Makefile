@@ -33,6 +33,11 @@ YAJL_VERSION ?= 2.1.0
 # renovate: datasource=github-tags depName=lloyd/yajl versioning=semver digest
 YAJL_SHA ?= a0ecdde0c042b9256170f2f8890dd9451a4240aa
 
+# renovate: datasource=github-tags depName=GNOME/libxml2 versioning=semver
+LIBXML2_VERSION ?= v2.13.9
+# renovate: datasource=github-tags depName=GNOME/libxml2 versioning=semver digest
+LIBXML2_SHA ?= 04af2cabb9f859c198b8a553c028a87481199410
+
 # renovate: datasource=github-tags depName=coreruleset/coreruleset versioning=semver
 CRS_VERSION ?= v4.27.0
 
@@ -63,7 +68,7 @@ WASM ?= dist/modsecurity-proxy-wasm.wasm
 help:
 	@echo "Build (make is the single source of truth; Dockerfile runs 'make all'):"
 	@echo "  make all            Build deps + dist/modsecurity-proxy-wasm.wasm + dist/modsecurity-proxy-wasm.wat"
-	@echo "  make deps           Fetch/build emsdk, SDK, PCRE2, ModSecurity, CRS"
+	@echo "  make deps           Fetch/build emsdk, SDK, PCRE2, yajl, libxml2, ModSecurity, CRS"
 	@echo "  make modsecurity-proxy-wasm.wasm    Link plugin (implies deps + generate-rules)"
 	@echo ""
 	@echo "Inspect a finished .wasm (version, source, capabilities):"

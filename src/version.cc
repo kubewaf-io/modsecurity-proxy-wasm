@@ -32,7 +32,7 @@ MSPW_USED MSPW_SECTION static const char kModsecurityProxyWasmMeta[] =
     "runtime=envoy.wasm.runtime.v8\n"
     "build_date=" MODSECURITY_PROXY_WASM_BUILD_DATE "\n"
     "build_host=" MODSECURITY_PROXY_WASM_BUILD_HOST "\n"
-    "features=kubewaf-defaults,crs-catalog,ecds,metrics\n"
+    "features=kubewaf-defaults,crs-catalog,ecds,metrics,yajl-json,libxml2-xml\n"
     MODSECURITY_PROXY_WASM_META_END "\n";
 
 const char* modsecurity_proxy_wasm_metadata(void) {

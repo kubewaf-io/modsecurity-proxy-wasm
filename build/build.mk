@@ -14,6 +14,8 @@ PCRE2_SRC       ?= $(PREFIX)/pcre2-wasm
 PCRE2_EM        ?= $(PREFIX)/pcre2-em
 YAJL_SRC        ?= $(PREFIX)/yajl
 YAJL_EM         ?= $(PREFIX)/yajl-em
+LIBXML2_SRC     ?= $(PREFIX)/libxml2
+LIBXML2_EM      ?= $(PREFIX)/libxml2-em
 MODSEC_SRC      ?= $(PREFIX)/modsec
 MODSECURITY_LIB ?= $(PREFIX)/modsecurity-lib
 CRS_DIR         ?= $(PREFIX)/crs
@@ -39,7 +41,8 @@ EMS_ENV         := EMSDK=$(EMSDK) . $(EMSDK)/emsdk_env.sh &&
 MODSEC_CONFIGURE_FLAGS := \
 	--with-pcre2=$(PCRE2_EM) \
 	--with-yajl=$(YAJL_EM) \
-	--without-geoip --without-libxml --without-curl \
+	--with-libxml=$(LIBXML2_EM) \
+	--without-geoip --without-curl \
 	--without-lua --disable-shared --disable-examples --disable-libtool-lock \
 	--disable-debug-logs --disable-mutex-on-pm --without-lmdb --without-maxmind \
 	--without-ssdeep
@@ -94,6 +97,7 @@ deps: $(STAMPS_DIR)/emsdk \
 	$(STAMPS_DIR)/proxy-wasm-cpp-sdk \
 	$(STAMPS_DIR)/pcre2 \
 	$(STAMPS_DIR)/yajl \
+	$(STAMPS_DIR)/libxml2 \
 	$(STAMPS_DIR)/modsecurity \
 	$(STAMPS_DIR)/crs
 
@@ -170,7 +174,45 @@ $(STAMPS_DIR)/yajl: | $(STAMPS_DIR)/emsdk
 	fi
 	touch $@
 
-$(STAMPS_DIR)/modsecurity: $(STAMPS_DIR)/pcre2 $(STAMPS_DIR)/yajl \
+# libxml2 for CRS XML://@* body inspection (requestBodyProcessor=XML).
+# Static-only wasm build: no python/iconv/zlib/http/threads; headers under
+# include/libxml2/libxml (standard pkg-config layout for --with-libxml).
+$(STAMPS_DIR)/libxml2: | $(STAMPS_DIR)/emsdk
+	@mkdir -p $(STAMPS_DIR) $(PREFIX)
+	rm -rf $(LIBXML2_SRC) $(LIBXML2_EM)
+	git clone --branch "$(LIBXML2_VERSION)" https://github.com/GNOME/libxml2.git $(LIBXML2_SRC)
+	test "$$(git -C $(LIBXML2_SRC) rev-parse HEAD)" = "$(LIBXML2_SHA)"
+	cd $(LIBXML2_SRC) && ./autogen.sh
+	cd $(LIBXML2_SRC) && $(EMS_ENV) emconfigure ./configure \
+		--host=wasm32-unknown-emscripten \
+		--prefix=$(LIBXML2_EM) \
+		--disable-shared \
+		--enable-static \
+		--disable-dependency-tracking \
+		--without-python \
+		--without-lzma \
+		--without-iconv \
+		--without-icu \
+		--without-zlib \
+		--without-http \
+		--without-ftp \
+		--without-legacy \
+		--without-modules \
+		--without-debug \
+		--without-threads \
+		--without-readline \
+		--without-history \
+		--without-catalog
+	# Build only the library — skip xmllint/xmlcatalog (need full emscripten link).
+	cd $(LIBXML2_SRC) && $(EMS_ENV) emmake make -j$(JOBS) libxml2.la
+	cd $(LIBXML2_SRC) && $(EMS_ENV) emmake make install-libLTLIBRARIES install-pkgconfigDATA
+	cd $(LIBXML2_SRC)/include && $(EMS_ENV) emmake make install
+	test -f "$(LIBXML2_EM)/lib/libxml2.a"
+	test -f "$(LIBXML2_EM)/include/libxml2/libxml/parser.h"
+	test -f "$(LIBXML2_EM)/lib/pkgconfig/libxml-2.0.pc"
+	touch $@
+
+$(STAMPS_DIR)/modsecurity: $(STAMPS_DIR)/pcre2 $(STAMPS_DIR)/yajl $(STAMPS_DIR)/libxml2 \
 		$(BUILD_DIR)/build/patches/modsecurity-pm-from-file-catalog.patch
 	@mkdir -p $(STAMPS_DIR) $(PREFIX)
 	rm -rf $(MODSEC_SRC)
@@ -182,10 +224,18 @@ $(STAMPS_DIR)/modsecurity: $(STAMPS_DIR)/pcre2 $(STAMPS_DIR)/yajl \
 	cd $(MODSEC_SRC) && patch -p1 < $(BUILD_DIR)/build/patches/modsecurity-pm-from-file-catalog.patch
 	cd $(MODSEC_SRC) && ./build.sh
 	cd $(MODSEC_SRC) && $(EMS_ENV) \
-		PKG_CONFIG_PATH=$(PCRE2_EM)/lib/pkgconfig:$(YAJL_EM)/lib/pkgconfig \
-		CPPFLAGS="-I$(YAJL_EM)/include" \
-		LDFLAGS="-L$(YAJL_EM)/lib" \
+		PKG_CONFIG_PATH=$(PCRE2_EM)/lib/pkgconfig:$(YAJL_EM)/lib/pkgconfig:$(LIBXML2_EM)/lib/pkgconfig \
+		CPPFLAGS="-I$(YAJL_EM)/include -I$(LIBXML2_EM)/include/libxml2" \
+		LDFLAGS="-L$(YAJL_EM)/lib -L$(LIBXML2_EM)/lib" \
 		emconfigure ./configure $(MODSEC_CONFIGURE_FLAGS)
+	# Fail fast if libxml2 was not detected (XML://@* would be a no-op).
+	# ModSecurity enables XML via CFLAGS -DWITH_LIBXML2 (LIBXML2_CFLAGS), not config.h.
+	@grep -E '^LIBXML2_FOUND = 1$$' $(MODSEC_SRC)/Makefile \
+		|| (echo "ERROR: ModSecurity configured without LibXML2 (LIBXML2_FOUND != 1)" >&2; \
+		    grep -E 'LIBXML2_|LibXML2|libxml' $(MODSEC_SRC)/Makefile $(MODSEC_SRC)/config.log 2>/dev/null | tail -40 >&2; \
+		    exit 1)
+	@grep -qE 'WITH_LIBXML2' $(MODSEC_SRC)/Makefile \
+		|| (echo "ERROR: WITH_LIBXML2 missing from ModSecurity Makefile CFLAGS" >&2; exit 1)
 	cd $(MODSEC_SRC) && $(EMS_ENV) emmake make -j$(JOBS) -C others
 	cd $(MODSEC_SRC) && $(EMS_ENV) emmake make -j$(JOBS) -C src libmodsecurity.la
 	mkdir -p $(MODSECURITY_LIB)/lib $(MODSECURITY_LIB)/include
@@ -251,6 +301,7 @@ $(MODSECURITY_PROXY_WASM_OUT): deps $(GENERATED_CC) $(WASM_GETENTROPY_OBJ) $(WAS
 		$(WASM_STUBS_OBJ) \
 		$(PCRE2_EM)/lib/libpcre2-8.a \
 		$(YAJL_EM)/lib/libyajl_s.a \
+		$(LIBXML2_EM)/lib/libxml2.a \
 		-o $(MODSECURITY_PROXY_WASM_OUT)
 
 # Optional text form for debugging (requires wabt: apt install wabt / brew install wabt).

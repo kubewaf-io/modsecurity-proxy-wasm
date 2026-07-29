@@ -43,3 +43,4 @@ Dockerfile.bak
 Thumbs.db
 
 docs/
+test/regression/ftw/.generated/
