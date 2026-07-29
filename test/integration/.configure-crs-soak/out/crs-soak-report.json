@@ -1,0 +1,36 @@
+{
+  "profile": "full",
+  "pass": true,
+  "wasm_linear_memory": {
+    "initial_memory_pages": 512,
+    "maximum_memory_pages": 8192,
+    "initial_memory_bytes": 33554432,
+    "maximum_memory_bytes": 536870912,
+    "source": "/data/engines/modsecurity-proxy-wasm/dist/modsecurity-proxy-wasm.wasm"
+  },
+  "peak_wasm_heap_bytes": 33554432,
+  "gauge_after_configure_bytes": 33554432,
+  "memory_grew_above_initial": false,
+  "stages": {
+    "configure_start": 33554432,
+    "config_read": 33554432,
+    "modsec_init": 33554432,
+    "crs_data_ready": 33554432,
+    "after_crs_data": 33554432,
+    "rules_loading": 33554432,
+    "rules_loaded": 33554432,
+    "rules_applied": 33554432,
+    "config_freed": 33554432,
+    "config_applied": 33554432
+  },
+  "crs_path_b": {
+    "directive_count": 795,
+    "pm_from_file_refs": 21,
+    "raw_bytes": 456663,
+    "compressed_bytes": 64683,
+    "conf_files": 27
+  },
+  "recommendation": "INITIAL_MEMORY floor is sufficient for this profile; keep 64MB default.",
+  "budget_bytes": 33554432,
+  "observed_bytes": 33554432
+}

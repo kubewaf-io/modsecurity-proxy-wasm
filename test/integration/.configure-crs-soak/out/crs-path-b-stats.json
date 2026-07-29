@@ -1,0 +1,145 @@
+{
+  "profile": "full",
+  "conf_files": [
+    {
+      "name": "REQUEST-901-INITIALIZATION.conf",
+      "directives": 36,
+      "pm_from_file": 0
+    },
+    {
+      "name": "REQUEST-905-COMMON-EXCEPTIONS.conf",
+      "directives": 5,
+      "pm_from_file": 0
+    },
+    {
+      "name": "REQUEST-911-METHOD-ENFORCEMENT.conf",
+      "directives": 10,
+      "pm_from_file": 0
+    },
+    {
+      "name": "REQUEST-913-SCANNER-DETECTION.conf",
+      "directives": 10,
+      "pm_from_file": 1
+    },
+    {
+      "name": "REQUEST-920-PROTOCOL-ENFORCEMENT.conf",
+      "directives": 107,
+      "pm_from_file": 0
+    },
+    {
+      "name": "REQUEST-921-PROTOCOL-ATTACK.conf",
+      "directives": 27,
+      "pm_from_file": 0
+    },
+    {
+      "name": "REQUEST-922-MULTIPART-ATTACK.conf",
+      "directives": 7,
+      "pm_from_file": 0
+    },
+    {
+      "name": "REQUEST-930-APPLICATION-ATTACK-LFI.conf",
+      "directives": 15,
+      "pm_from_file": 4
+    },
+    {
+      "name": "REQUEST-931-APPLICATION-ATTACK-RFI.conf",
+      "directives": 15,
+      "pm_from_file": 0
+    },
+    {
+      "name": "REQUEST-932-APPLICATION-ATTACK-RCE.conf",
+      "directives": 69,
+      "pm_from_file": 4
+    },
+    {
+      "name": "REQUEST-933-APPLICATION-ATTACK-PHP.conf",
+      "directives": 31,
+      "pm_from_file": 2
+    },
+    {
+      "name": "REQUEST-934-APPLICATION-ATTACK-GENERIC.conf",
+      "directives": 21,
+      "pm_from_file": 2
+    },
+    {
+      "name": "REQUEST-941-APPLICATION-ATTACK-XSS.conf",
+      "directives": 44,
+      "pm_from_file": 0
+    },
+    {
+      "name": "REQUEST-942-APPLICATION-ATTACK-SQLI.conf",
+      "directives": 74,
+      "pm_from_file": 0
+    },
+    {
+      "name": "REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf",
+      "directives": 15,
+      "pm_from_file": 0
+    },
+    {
+      "name": "REQUEST-944-APPLICATION-ATTACK-JAVA.conf",
+      "directives": 25,
+      "pm_from_file": 1
+    },
+    {
+      "name": "REQUEST-949-BLOCKING-EVALUATION.conf",
+      "directives": 31,
+      "pm_from_file": 0
+    },
+    {
+      "name": "REQUEST-999-COMMON-EXCEPTIONS-AFTER.conf",
+      "directives": 55,
+      "pm_from_file": 0
+    },
+    {
+      "name": "RESPONSE-950-DATA-LEAKAGES.conf",
+      "directives": 15,
+      "pm_from_file": 1
+    },
+    {
+      "name": "RESPONSE-951-DATA-LEAKAGES-SQL.conf",
+      "directives": 28,
+      "pm_from_file": 1
+    },
+    {
+      "name": "RESPONSE-952-DATA-LEAKAGES-JAVA.conf",
+      "directives": 11,
+      "pm_from_file": 0
+    },
+    {
+      "name": "RESPONSE-953-DATA-LEAKAGES-PHP.conf",
+      "directives": 14,
+      "pm_from_file": 1
+    },
+    {
+      "name": "RESPONSE-954-DATA-LEAKAGES-IIS.conf",
+      "directives": 16,
+      "pm_from_file": 1
+    },
+    {
+      "name": "RESPONSE-955-WEB-SHELLS.conf",
+      "directives": 37,
+      "pm_from_file": 2
+    },
+    {
+      "name": "RESPONSE-956-DATA-LEAKAGES-RUBY.conf",
+      "directives": 12,
+      "pm_from_file": 1
+    },
+    {
+      "name": "RESPONSE-959-BLOCKING-EVALUATION.conf",
+      "directives": 31,
+      "pm_from_file": 0
+    },
+    {
+      "name": "RESPONSE-980-CORRELATION.conf",
+      "directives": 24,
+      "pm_from_file": 0
+    }
+  ],
+  "pm_from_file_refs": 21,
+  "directive_count": 795,
+  "total_lines": 822,
+  "raw_bytes": 456663,
+  "compressed_bytes": 64683
+}
