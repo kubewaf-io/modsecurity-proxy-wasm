@@ -110,6 +110,8 @@ hint "Include @owasp_crs" 'owasp_crs|@owasp_crs|REQUEST-9'
 hint "Include @demo-conf" 'demo-conf|@demo-conf'
 hint "CRS / rule catalog data" 'coreruleset|REQUEST-901|crs_setup_version'
 hint "kubeWAF mode / product branding" 'mode=kubewaf|blocked by kubeWAF|kubeWAF/'
+hint "libxml2 XML body processor" 'libxml2-xml|requestBodyProcessor=XML|WITH_LIBXML2'
+hint "yajl JSON body processor" 'yajl-json|requestBodyProcessor=JSON|WITH_YAJL'
 echo
 
 echo "=== source path traces (debug / __FILE__) ==="
