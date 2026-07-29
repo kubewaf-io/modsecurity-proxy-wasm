@@ -1,0 +1,51 @@
+{
+  "envoy_before": {
+    "allocated_bytes": 28987688,
+    "heap_size_bytes": 169869312,
+    "physical_size_bytes": 175041342
+  },
+  "envoy_after": {
+    "allocated_bytes": 28987688,
+    "heap_size_bytes": 169869312,
+    "physical_size_bytes": 175041342
+  },
+  "modsecurity_before": {
+    "wasm_heap_bytes": 33554432
+  },
+  "modsecurity_after": {
+    "wasm_heap_bytes": 33554432
+  },
+  "wasm_heap_after_configure": 33554432,
+  "wasm_heap_after_k6": 33554432,
+  "wasm_linear_memory": {
+    "initial_memory_pages": 512,
+    "maximum_memory_pages": 8192,
+    "initial_memory_bytes": 33554432,
+    "maximum_memory_bytes": 536870912,
+    "source": "/data/engines/modsecurity-proxy-wasm/dist/modsecurity-proxy-wasm.wasm"
+  },
+  "configure_heap_ladder": {
+    "peak_wasm_heap_bytes": 33554432,
+    "stages": {
+      "configure_start": 33554432,
+      "config_read": 33554432,
+      "modsec_init": 33554432,
+      "crs_data_ready": 33554432,
+      "after_crs_data": 33554432,
+      "rules_loading": 33554432,
+      "rules_loaded": 33554432,
+      "rules_applied": 33554432,
+      "config_freed": 33554432,
+      "config_applied": 33554432
+    },
+    "source": "/data/engines/modsecurity-proxy-wasm/test/integration/.configure-crs-soak/out/configure-crs-soak-envoy.log"
+  },
+  "peak_container": {
+    "container_rss_bytes": null,
+    "container_limit_bytes": null
+  },
+  "container_after": {
+    "container_rss_bytes": 439038771,
+    "container_limit_bytes": 4102767509
+  }
+}
