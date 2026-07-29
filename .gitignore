@@ -51,3 +51,4 @@ test/regression/ftw/.crs-cache/
 Thumbs.db
 
 docs/
+test/regression/ftw/.generated/
