@@ -30,8 +30,9 @@ import re
 import sys
 from pathlib import Path
 
-# CRS numerical setup version for v4.27.0 (see crs-setup.conf.example).
-CRS_SETUP_VERSION = 4270
+# CRS numerical setup version for v4.x (see crs-setup.conf.example).
+# 4.28.0 → 4280; keep in sync with CRS_VERSION used for Path B generation.
+CRS_SETUP_VERSION = 4280
 
 # Directives that need a real filesystem or are unsupported in wasm.
 _SKIP_PREFIXES = (
@@ -106,19 +107,25 @@ def load_conf_directives(path: Path) -> list[str]:
     return [ln for ln in flatten_seclang(text) if not should_skip_line(ln)]
 
 
-def crs_setup_directives() -> list[str]:
-    """Minimal setup so REQUEST-901 does not 500 on missing crs_setup_version."""
+def crs_setup_directives(*, paranoia_level: int = 1) -> list[str]:
+    """Minimal setup so REQUEST-901 does not 500 on missing crs_setup_version.
+
+    paranoia_level: CRS detection+blocking PL (FTW needs 4 so PL2+ XSS rules run).
+    """
+    pl = int(paranoia_level)
     return [
         # Marker required by REQUEST-901-INITIALIZATION (rule 901001).
         (
             'SecAction "id:900990,phase:1,pass,nolog,t:none,'
             f'setvar:tx.crs_setup_version={CRS_SETUP_VERSION}"'
         ),
-        # Explicit PL1 + thresholds (901 also defaults these if unset).
+        # Explicit PL + thresholds (901 also defaults these if unset).
+        # Must set detection_paranoia_level as well as blocking — otherwise PL2+
+        # rules are skipped even when @ftw-conf raises blocking PL later.
         (
             'SecAction "id:900000,phase:1,pass,nolog,t:none,'
-            "setvar:tx.blocking_paranoia_level=1,"
-            "setvar:tx.detection_paranoia_level=1,"
+            f"setvar:tx.blocking_paranoia_level={pl},"
+            f"setvar:tx.detection_paranoia_level={pl},"
             "setvar:tx.inbound_anomaly_score_threshold=5,"
             'setvar:tx.outbound_anomaly_score_threshold=4"'
         ),
@@ -162,16 +169,18 @@ def build_directives(crs: Path, profile: str, preset: str = "default") -> tuple[
             "SecDebugLogLevel 0",
             "SecRuleEngine On",
         ]
+        setup_pl = 4
     elif preset == "default":
         directives = [
             "Include @kubewaf-defaults",
             "SecRuleEngine On",
             "SecDebugLogLevel 0",
         ]
+        setup_pl = 1
     else:
         raise ValueError(f"unknown preset: {preset}")
 
-    directives.extend(crs_setup_directives())
+    directives.extend(crs_setup_directives(paranoia_level=setup_pl))
 
     stats: dict = {
         "profile": profile,

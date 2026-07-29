@@ -84,6 +84,8 @@ lines the same way as a plain string array. Small configs stay uncompressed arra
 }
 ```
 
+**Body processors** — ModSecurity is built with **yajl** (JSON) and **libxml2** (XML) so CRS rules that inspect `ARGS` from JSON bodies and `XML://@*` / `XML:/*` attributes work when configs enable `ctl:requestBodyProcessor=JSON|XML` (see `@kubewaf-defaults` / `@demo-conf`).
+
 **Rules catalog (build-time embed)** — **path-b only**. The wasm ships helpers + CRS phrase lists; CRS *rule confs* are never embedded. kubeWAF loads structured SecRule CRs as inline SecLang. Phrase files stay embedded so `@pmFromFile scanners-user-agents.data` etc. resolve without a real filesystem.
 
 | Virtual include | Embedded |
