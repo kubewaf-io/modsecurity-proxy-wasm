@@ -78,7 +78,8 @@ lines the same way as a plain string array. Small configs stay uncompressed arra
     "engine": "modsecurity",
     "owner": "modsecurity-proxy-wasm"
   },
-  "metrics": { "enabled": true, "per_rule_id": true, "rule_tags": true },
+  "metrics": { "enabled": true, "per_rule_id": false, "rule_tags": false, "dual_prefix": true },
+  "transforms": { "fullwidth_normalize": true },
   "block": { "message": "blocked by kubeWAF" }
 }
 ```
@@ -139,7 +140,8 @@ make extract-wasm    # → dist/modsecurity-proxy-wasm.wasm
 
 ```bash
 make test-bats         # Envoy smoke
-make test-regression   # CRS go-ftw
+make test-regression                         # full CRS go-ftw (Path B; large ignore list)
+FTW_INCLUDE='^941.*' make test-regression    # CI XSS subset (must stay green)
 make test-unit         # waf_config
 ```
 

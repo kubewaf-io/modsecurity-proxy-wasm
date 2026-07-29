@@ -13,7 +13,7 @@ WASM_OUT := dist/modsecurity-proxy-wasm.wasm
 # --- Pinned dependencies (Renovate: customManagers:makefileVersions + renovate.json) ---
 
 # renovate: datasource=github-tags depName=emscripten-core/emsdk versioning=semver-coerced
-EMSDK_VERSION ?= 3.1.74
+EMSDK_VERSION ?= 6.0.4
 
 # renovate: datasource=github-tags depName=proxy-wasm/proxy-wasm-cpp-sdk versioning=git
 PROXY_WASM_CPP_SDK_VERSION ?= 727de65b37507611b76123316c6832581f42d4f0
@@ -34,13 +34,13 @@ YAJL_VERSION ?= 2.1.0
 YAJL_SHA ?= a0ecdde0c042b9256170f2f8890dd9451a4240aa
 
 # renovate: datasource=github-tags depName=coreruleset/coreruleset versioning=semver
-CRS_VERSION ?= v4.27.0
+CRS_VERSION ?= v4.28.0
 
 # renovate: datasource=docker depName=ghcr.io/coreruleset/go-ftw
-GO_FTW_VERSION ?= 2.4.0
+GO_FTW_VERSION ?= 2.5.0
 
 # renovate: datasource=docker depName=envoyproxy/envoy versioning=loose
-ENVOY_IMAGE ?= envoyproxy/envoy:v1.38-latest
+ENVOY_IMAGE ?= envoyproxy/envoy:v1.39.0
 
 BUILD_ARGS := $(if $(CRS_VERSION),--build-arg CRS_VERSION=$(CRS_VERSION),) \
               $(if $(VERSION),--build-arg VERSION=$(VERSION),)
@@ -81,6 +81,8 @@ help:
 	@echo "  make test-unit         Native gtest for waf_config (fast)"
 	@echo "  make test-bats         Envoy integration smoke tests (needs dist/modsecurity-proxy-wasm.wasm)"
 	@echo "  make test-envoy        Alias for test-bats + verify-getentropy-stub"
+	@echo "  make test-configure-stress     Path B synthetic gzip/chain/pm configure gate"
+	@echo "  make test-configure-crs-soak   Path B real CRS configure soak (memory truth)"
 	@echo "  make test-regression   CRS go-ftw regression (FTW_INCLUDE='^941.*' for subset)"
 	@echo "  make test-fuzz         libFuzzer smoke on waf_config (needs clang++)"
 	@echo "  make test-perf-k6          k6 load test (PERF_PROFILE / PERF_SCENARIO)"
@@ -89,6 +91,11 @@ help:
 	@echo "  make test-perf-charts      Overlay chart from latest perf results"
 	@echo "  make test-perf-release     Perf smoke + release overlay chart"
 	@echo "  make verify-getentropy-stub  Policy check for wasm getentropy stub"
+	@echo ""
+	@echo "Wasm memory knobs (link time; rebuild required):"
+	@echo "  INITIAL_MEMORY=32MB MAXIMUM_MEMORY=512MB STACK_SIZE=4MB   # defaults"
+	@echo "  INITIAL_MEMORY=64MB|128MB make modsecurity-proxy-wasm.wasm  # if Path B OOM"
+	@echo "  Then: make test-configure-stress / test-configure-crs-soak"
 
 # --- Inspect finished .wasm ---
 

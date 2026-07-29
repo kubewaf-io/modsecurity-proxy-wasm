@@ -8,7 +8,7 @@
 
 services:
   envoy:
-    image: ${ENVOY_IMAGE:-envoyproxy/envoy:v1.38-latest}
+    image: ${ENVOY_IMAGE:-envoyproxy/envoy:v1.39-latest@sha256:d59f7f5fa10cff6d5892b6c5e7df5c9297ddfb2c3683e33fbfb82da24de4fa66}
     container_name: ${PERF_ENVOY_CONTAINER:-modsecurity-proxy-wasm-perf-envoy}
     command: ["envoy", "-c", "/etc/envoy.yaml", "--log-level", "warn"]
     ports:
@@ -26,7 +26,7 @@ services:
 
   k6:
     # renovate: datasource=docker depName=grafana/k6
-    image: ${K6_IMAGE:-grafana/k6:0.57.0}
+    image: ${K6_IMAGE:-grafana/k6:2.1.0}
     depends_on:
       - envoy
     volumes:

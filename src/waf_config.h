@@ -46,6 +46,9 @@ struct WafPluginOptions {
   // Stable id, e.g. "kubewaf/shop/shop-waf" (ECDS resource name).
   std::string config_id;
   bool allow_fallback{false};
+  // Pre-fold fullwidth Unicode / %EF%BC in path, headers, and request bodies so
+  // CRS XSS (941110-7/8) sees ASCII. Off for pure-latency profiles; on by default.
+  bool fullwidth_normalize{true};
 };
 
 // Parse metric_labels + metrics{}/flat toggles from JSON plugin configuration.

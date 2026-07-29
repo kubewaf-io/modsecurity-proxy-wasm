@@ -109,6 +109,11 @@ Each run: `test/perf/results/run-<timestamp>-<profile>-<scenario>/`
 - `k6-compare.html` (after `--compare` / CI smoke pairs)
 - `envoy-stats-*.txt`, `envoy-prometheus-*.txt`
 - `memory-snapshot.json`, `memory-samples.log` (peak container RSS during k6)
+- `memory-snapshot.json` also includes (WS0):
+  - `wasm_linear_memory` — link-time INITIAL/MAXIMUM from the `.wasm` Memory section
+  - `modsecurity_before` / `modsecurity_after` — plugin `wasm_heap_bytes` gauges
+  - `wasm_heap_after_configure` / `wasm_heap_after_k6`
+  - `configure_heap_ladder` — peak + per-stage map when Envoy logs with `heap_sample` are present
 - `modsecurity-proxy-wasm-metrics-*.txt` (modsecurity-proxy-wasm profiles)
 - `coraza-wasm-metrics-*.txt` (coraza profiles — `waf_filter_tx_*`)
 
@@ -128,7 +133,12 @@ make test-perf-release-compare # k6: previous GitHub release wasm vs current tag
 make test-perf-release         # smoke perf + release compare + chart bundle
 ```
 
-Each run directory also gets `memory-snapshot.json` (peak container RSS + `modsecurity_proxy_wasm.memory.wasm_heap_bytes` from the plugin gauge).
+Each run directory also gets `memory-snapshot.json` (peak container RSS +
+`modsecurity_proxy_wasm.memory.wasm_heap_bytes` + link-time linear memory when
+`PERF_WASM` points at the binary under test).
+
+**Configure-only heap gate** (no k6): `make test-configure-stress` — see
+[test/README.md](../README.md).
 
 Release compare downloads the previous tag’s `modsecurity-proxy-wasm.wasm` from GitHub Releases and benchmarks `benign-get` + `benign-post-1k` against the current build. For private repos, set `GITHUB_TOKEN` (or `GH_TOKEN`); CI already passes `secrets.GITHUB_TOKEN` into the release publish job.
 

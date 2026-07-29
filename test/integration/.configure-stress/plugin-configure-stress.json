@@ -1,0 +1,22 @@
+{
+  "directives_encoding": "gzip+base64",
+  "directives_map": {
+    "default": "H4sIAAAAAAACA7XbTU9bZxCG4X1/hcWGRU10Zt6Z98NSpaCGtJXSokIitSt0gk8MijlGPnaa/PuAgObZlLbSPFtkzViI+8KG8S/j5Xq/HGYvP+7fD3/1H46Ww4d+v95N350Pl2f79XAyrq7HYXY63n/h1fB+v3qzWb0ZPg3rWff0mNnZye/vTs7fXvx8cvzq5Ox88W4atkfHq2HczQ5e3t683m5uXl/fPW667Mdx2E5H+/sH9PcPmF4s+11/MDu4Xi6aJOm6+e1VPw0Lmd/20zQfN+vNar5bjJtxmE/D7lO/XRzuPr/ox81Nv/5yMV1utsPF7Vp++N4PD/5+RsdnP53f7d5+nk277TBNR7vNx2E86h4Xdd23Rfq/F8m/LxJYJMxFCouUuSjBosRcZLDImIscFjlzUYZFmbmowKLCXFRhUWUuarCoUYMFGoRLA9ggVBsEcBAqDgI6CFUHAR6EyoOAD0L1QQAIoQIhIIRQhRAgQqhECBghVCMUjFCqEQpGKPf1AxihVCMUjFCqEQpGKNUIBSOUaoSCEUo1QsEIpRqhYIRSjVAwQqlGJDAiUY1IYESiGpHAiMR9kwFGJKoRCYxIVCMSGJGoRiQwIlGNSGBEohqRwIhENSKBEYlqhIERRjXCwAijGmFghFGNMDDCuH+JACOMaoSBEUY1wsAIoxphYIRRjTAwwqhGGBhhVCMcjHCqEQ5GONUIByOcaoSDEU41wsEI5/65EoxwqhEORjjVCAcjnGqEgxFONcLBCKcakcGITDUigxGZakQGIzLViAxGZKoRGYzIVCMyGJG5/9MAIzLViAxGZKoRGYzIVCMyGJGpRhQwolCNKGBEoRpRwIhCNaKAEYVqRAEjCtWIAkYUqhEFjCjcf3yCEYVqRAEjCtWIAkYUqhEVjKhUIyoYUalGVDCiUo2oYESlGlHBiEo1ooIRlWpEBSMq1YgKRlTudQQYUalGVDCiUo1oYESjGtHAiEY1ooERjWpEAyMa1YgGRjSqEQ2MaFQjGhjRqEY0MKJRjWhgROOeUIERjXxD9Q0JJd9XdgKruFdUncIq7hlVl2AV946qM1jFPaTqHFZxL6m6DKu4p1RdgVXcW6quwiruMVXXYBVXCzi5VPbJJWhBvrmEo0slH13C1aWSry7h7FLJZ5dwd6nku0s4vFTy4SVcXir58hJOL5V8egm3lxp0e/n2j8Xxb6e/Hr/58+L8x9Ozk7u1q2H29DNhDa+zl8P4ZT7t+t1+Wtjd78v7hTfTanH48Cxnj6sO55dX/fX4/I7d7J6jh6d78E+fbHn4Hlwtt0eP34cnwu5e+jz3yZX/PlBgoEQMVBioEQMTDEwRAw0GWsRAh4EeMTDDwBwxsMDAEjGwwsAaMbDBwBbygw2pSEwq0IqEtCIQi4TEIlCLhNQikIuE5CLQi4T0IhCMhAQjUIyEFCOQjIQkI9CMhDSj0IyGNKPQjMb8foFmNKQZhWY0pBmFZjSkGYVmNKQZhWY0pBmFZjSkGYVmNKQZhWY0pJkEzaSQZhI0k0KaSdBMinlRBs2kkGYSNJNCmknQTAppJkEzKaSZBM2kkGYSNJNCmknQTAppxqAZC2nGoBkLacagGQtpxqAZi3knA81YSDMGzVhIMwbNWEgzBs1YSDMGzVhIMwbNWEgzDs14SDMOzXhIMw7NeEgzDs14SDMOzXjM239oxkOacWjGQ5pxaMZDmnFoxkOacWjGn23mK0vJqktGRgAA"
+  },
+  "default_directives": "default",
+  "directives_stats": {
+    "raw_bytes": 17990,
+    "compressed_bytes": 1302,
+    "score_rules": 120
+  },
+  "metric_labels": {
+    "owner": "modsecurity-proxy-wasm",
+    "identifier": "configure-stress"
+  },
+  "metrics": {
+    "enabled": true,
+    "per_rule_id": false,
+    "rule_tags": false,
+    "dual_prefix": false
+  }
+}

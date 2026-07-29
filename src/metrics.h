@@ -12,10 +12,13 @@
 struct WafMetricOptions {
   std::vector<std::pair<std::string, std::string>> labels;
   bool enabled{true};
-  bool per_rule_id{true};
-  bool rule_tags{true};
+  // High-cardinality series: off by default (enable for debug / threat intel).
+  bool per_rule_id{false};
+  bool rule_tags{false};
   // When true, core counters are also emitted under kubewaf_waf.* for product dashboards.
-  bool dual_prefix{true};
+  // Default false for standalone; parseWafPluginOptions turns this on for kubeWAF identity
+  // unless metrics.dual_prefix is set explicitly to false.
+  bool dual_prefix{false};
 };
 
 class ModSecMetrics {
