@@ -259,24 +259,31 @@ $(STAMPS_DIR)/crs:
 	git clone --depth 1 --branch "$(CRS_VERSION)" https://github.com/coreruleset/coreruleset.git $(CRS_DIR)
 	touch $@
 
-# Catalog is path-b only: helpers + @crs-data phrase lists (no CRS rule confs).
-# CRS rules are supplied at runtime as structured SecRule CRs / inline SecLang (Path B).
-# Do not reintroduce CATALOG_MODE=full here — Path A embedding is intentionally removed.
-CATALOG_MODE := path-b
+# Catalog modes (build-time embed into the .wasm):
+#   path-b (default, first-class) — helpers + @crs-data/*.data only.
+#     CRS *rules* come from structured SecRule CRs at runtime (kubeWAF Path B).
+#   full (second-class) — also embed @crs-setup-conf + @owasp_crs/*.conf for
+#     Path A ``crsEnable: true`` / ``Include @owasp_crs``. Publish as *-full tags.
+# Switching modes regenerates the catalog (stamp includes the mode name).
+CATALOG_MODE ?= path-b
+CATALOG_MODE_STAMP := $(BUILD_DIR)/src/generated/.catalog_mode_$(CATALOG_MODE)
 
-$(GENERATED_CC) $(GENERATED_H): $(STAMPS_DIR)/crs \
+$(GENERATED_CC) $(GENERATED_H) $(CATALOG_MODE_STAMP): $(STAMPS_DIR)/crs \
 		$(BUILD_RULES_DIR)/demo-conf.conf \
 		$(BUILD_RULES_DIR)/ftw-config.conf \
 		$(BUILD_RULES_DIR)/kubewaf-defaults.conf \
 		$(BUILD_SCRIPTS_DIR)/generate_rules_catalog.py
 	@mkdir -p $(BUILD_DIR)/src/generated
+	@rm -f $(BUILD_DIR)/src/generated/.catalog_mode_*
 	python3 $(BUILD_SCRIPTS_DIR)/generate_rules_catalog.py \
+		--mode $(CATALOG_MODE) \
 		--crs $(CRS_DIR) \
 		--demo $(BUILD_RULES_DIR)/demo-conf.conf \
 		--ftw $(BUILD_RULES_DIR)/ftw-config.conf \
 		--kubewaf-defaults $(BUILD_RULES_DIR)/kubewaf-defaults.conf \
 		--out-cc $(GENERATED_CC) \
 		--out-h $(GENERATED_H)
+	@touch $(CATALOG_MODE_STAMP)
 
 $(WASM_GETENTROPY_OBJ): $(BUILD_DIR)/src/wasm_getentropy.c | $(STAMPS_DIR)/emsdk
 	@mkdir -p $(OBJ_DIR)

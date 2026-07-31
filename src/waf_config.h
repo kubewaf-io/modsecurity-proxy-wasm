@@ -28,13 +28,20 @@ using RuleChunkLoader = bool (*)(const char* label, const char* data, std::size_
                                  std::string& error);
 bool applyWafConfiguration(const std::string& config, RuleChunkLoader loader, void* user, std::string& error);
 
-// Local-reply branding for interventions (kubeWAF product defaults).
+// Local-reply options for interventions.
+// Client-visible strings/headers stay product-neutral by default (no vendor names).
 struct WafBlockOptions {
-  std::string message{"blocked by kubeWAF"};
+  std::string message{"Forbidden"};
   // 0 = use ModSecurity intervention status (typically 403).
   int status{0};
+  // Marker header on deny local-replies. Empty disables the header entirely.
+  // Generic default intentionally avoids product names.
+  std::string blocked_header{"x-blocked"};
   bool add_rule_id_header{false};
-  std::string rule_id_header{"x-kubewaf-rule-id"};
+  std::string rule_id_header{"x-blocked-rule-id"};
+  // When true, echo the correlated request id on the deny local-reply.
+  bool add_request_id_header{false};
+  std::string request_id_header{"x-request-id"};
 };
 
 // Full plugin configuration parsed from Envoy Wasm plugin config JSON.

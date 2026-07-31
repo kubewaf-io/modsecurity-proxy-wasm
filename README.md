@@ -80,25 +80,45 @@ lines the same way as a plain string array. Small configs stay uncompressed arra
   },
   "metrics": { "enabled": true, "per_rule_id": false, "rule_tags": false, "dual_prefix": true },
   "transforms": { "fullwidth_normalize": true },
-  "block": { "message": "blocked by kubeWAF" }
+  "block": {
+    "message": "Forbidden",
+    "blocked_header": "x-blocked",
+    "add_rule_id_header": false,
+    "rule_id_header": "x-blocked-rule-id",
+    "add_request_id_header": false,
+    "request_id_header": "x-request-id"
+  }
 }
 ```
 
 **Body processors** — ModSecurity is built with **yajl** (JSON) and **libxml2** (XML) so CRS rules that inspect `ARGS` from JSON bodies and `XML://@*` / `XML:/*` attributes work when configs enable `ctl:requestBodyProcessor=JSON|XML` (see `@kubewaf-defaults` / `@demo-conf`).
 
-**Rules catalog (build-time embed)** — **path-b only**. The wasm ships helpers + CRS phrase lists; CRS *rule confs* are never embedded. kubeWAF loads structured SecRule CRs as inline SecLang. Phrase files stay embedded so `@pmFromFile scanners-user-agents.data` etc. resolve without a real filesystem.
+**Rules catalog (build-time embed)** — two published builds:
 
-| Virtual include | Embedded |
-|-----------------|----------|
-| `@kubewaf-defaults` | yes |
-| `@demo-conf` / `@ftw-conf` | yes |
-| `@crs-data/*.data` | yes (`@pmFromFile`) |
-| `@crs-setup-conf` | no |
-| `@owasp_crs/*.conf` | no |
+| Mode | Role | Embeds |
+|------|------|--------|
+| **path-b** (default, first-class) | Operator embed, all CI e2e | helpers + `@crs-data/*.data` |
+| **full** (second-class) | Path A `crsEnable` / `Include @owasp_crs` | path-b assets **plus** `@crs-setup-conf` + `@owasp_crs/*.conf` |
+
+CRS *rules* for path-b come from structured SecRule CRs (kubeWAF Path B). Phrase files stay embedded so `@pmFromFile scanners-user-agents.data` etc. resolve without a real filesystem.
+
+| Virtual include | path-b | full |
+|-----------------|--------|------|
+| `@kubewaf-defaults` | yes | yes |
+| `@demo-conf` / `@ftw-conf` | yes | yes |
+| `@crs-data/*.data` | yes | yes |
+| `@crs-setup-conf` | no | yes |
+| `@owasp_crs/*.conf` | no | yes |
 
 ```bash
+# First-class default (CI / operator)
 make modsecurity-proxy-wasm.wasm
+# Second-class Path A
+make modsecurity-proxy-wasm.wasm CATALOG_MODE=full
+make image-full   # OCI tag …-full
 ```
+
+Release tags (GHCR): `:vX.Y.Z` / `:X.Y.Z` = path-b; `:vX.Y.Z-full` = full catalog.
 
 Path B plugin config (operator / tests) looks like:
 

@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 """Embed virtual @-includes for the modsecurity-proxy-wasm Envoy plugin.
 
-Path B catalog only
--------------------
-Structured SecRule CRs supply CRS rules at runtime. The wasm embeds:
-  - @kubewaf-defaults, @ftw-conf, @demo-conf
-  - @crs-data/*.data  (phrase lists for @pmFromFile)
+Catalog modes
+-------------
+path-b (default)
+  kubeWAF Path B: structured SecRule CRs supply CRS rules. The wasm only embeds:
+    - @kubewaf-defaults, @ftw-conf, @demo-conf
+    - @crs-data/*.data  (phrase lists for @pmFromFile)
+  Does NOT embed @owasp_crs/*.conf or @crs-setup-conf.
 
-CRS rule confs (@owasp_crs/*.conf, @crs-setup-conf) are intentionally not embedded.
+full
+  Legacy Path A: also embeds @crs-setup-conf and all @owasp_crs/*.conf rule files
+  for ``Include @owasp_crs/*.conf`` / ``crsEnable: true``.
 """
 
 from __future__ import annotations
@@ -42,7 +46,57 @@ def c_escaped_concat(data: str, tag: str) -> str:
 
 
 CRS_DATA_PREFIX = "@crs-data/"
-CATALOG_MODE = "path-b"
+CATALOG_MODES = ("path-b", "full")
+
+
+def wasm_safe_rule_conf(conf: str, rules_dir: Path) -> str:
+    """Prepare CRS conf for wasm: keep @pmFromFile (MEMFS), disable @rxFromFile.
+
+    CRS .data phrase lists are embedded under @crs-data/* and written into
+    /modsecurity-proxy-wasm-rules at plugin start (see wasm_vfs.cc). ModSecurity
+    PmFromFile resolves basenames relative to the rule reference directory, so
+    operators stay as ``@pmFromFile scanners-user-agents.data`` etc.
+    """
+    del rules_dir  # reserved for future path rewrites
+    out: list[str] = []
+    for line in conf.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            out.append(line)
+            continue
+        if "@rxFromFile" in line:
+            out.append("# wasm-disabled (no filesystem): " + line)
+            continue
+        # Keep @pmFromFile as-is for runtime MEMFS resolution.
+        out.append(line)
+    return "\n".join(out) + "\n"
+
+
+def patch_crs_setup(example: str) -> str:
+    lines = []
+    for line in example.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("SecAuditLog "):
+            lines.append("SecAuditLog /dev/null")
+            continue
+        if stripped.startswith("SecDebugLog "):
+            lines.append("# SecDebugLog disabled in wasm build")
+            continue
+        if stripped.startswith("SecUnicodeMapFile "):
+            lines.append("# SecUnicodeMapFile disabled in wasm build")
+            continue
+        if stripped.startswith("SecGeoLookupDb "):
+            lines.append("# SecGeoLookupDb disabled in wasm build")
+            continue
+        lines.append(line)
+    body = "\n".join(lines)
+    header = (
+        "# Auto-generated @crs-setup-conf for modsecurity-proxy-wasm (from crs-setup.conf.example)\n"
+        "SecRequestBodyAccess On\n"
+        "SecResponseBodyAccess On\n"
+        "SecAuditEngine Off\n"
+    )
+    return header + "\n" + body + "\n"
 
 
 def emit_catalog(assets: list[tuple[str, str]], mode: str, out_cc: Path, out_h: Path) -> None:
@@ -118,7 +172,7 @@ struct RuleAsset {
   std::size_t size;
 };
 
-// Always "path-b": helpers + @crs-data only (no @owasp_crs / @crs-setup-conf).
+// "path-b" (default): helpers + @crs-data only. "full": also @owasp_crs + @crs-setup-conf.
 const char* catalog_mode();
 const RuleAsset* lookup(const char* path);
 void foreach_owasp_crs(bool (*fn)(const RuleAsset&, void*), void* user);
@@ -146,20 +200,13 @@ def main() -> int:
     )
     ap.add_argument(
         "--mode",
-        choices=(CATALOG_MODE,),
-        default=CATALOG_MODE,
-        help="Catalog mode (path-b only).",
+        choices=CATALOG_MODES,
+        default="path-b",
+        help="path-b: no CRS rule confs (default). full: embed Path A @owasp_crs + setup.",
     )
     ap.add_argument("--out-cc", type=Path, default=Path("src/generated/rules_catalog.cc"))
     ap.add_argument("--out-h", type=Path, default=Path("src/generated/rules_catalog.h"))
     args = ap.parse_args()
-
-    if args.mode != CATALOG_MODE:
-        print(
-            f"ERROR: only catalog mode {CATALOG_MODE!r} is supported (got {args.mode!r})",
-            file=sys.stderr,
-        )
-        return 1
 
     crs = args.crs
     rules_dir = crs / "rules"
@@ -186,11 +233,46 @@ def main() -> int:
         virtual = f"{CRS_DATA_PREFIX}{path.name}"
         assets.append((virtual, path.read_text(encoding="utf-8", errors="replace")))
 
-    emit_catalog(assets, CATALOG_MODE, args.out_cc, args.out_h)
+    conf_count = 0
+    pm_in_rules = 0
+    if args.mode == "full":
+        setup_example = crs / "crs-setup.conf.example"
+        if not setup_example.is_file():
+            print(f"ERROR: missing {setup_example}", file=sys.stderr)
+            return 1
+        assets.append(
+            (
+                "@crs-setup-conf",
+                patch_crs_setup(setup_example.read_text(encoding="utf-8", errors="replace")),
+            )
+        )
+
+        conf_files = sorted(rules_dir.glob("*.conf"))
+        if not conf_files:
+            print(f"ERROR: no *.conf under {rules_dir}", file=sys.stderr)
+            return 1
+
+        all_rules_parts: list[str] = []
+        for path in conf_files:
+            if path.suffix != ".conf" or ".example" in path.name:
+                continue
+            virtual = f"@owasp_crs/{path.name}"
+            raw = path.read_text(encoding="utf-8", errors="replace")
+            safe = wasm_safe_rule_conf(raw, rules_dir)
+            assets.append((virtual, safe))
+            all_rules_parts.append(f"# --- {path.name} ---\n{safe}")
+            conf_count += 1
+            pm_in_rules += safe.count("@pmFromFile")
+
+        # Single bundle for Include @owasp_crs/*.conf (avoids huge runtime concatenation).
+        assets.append(("@owasp_crs/_all.conf", "\n".join(all_rules_parts)))
+
+    emit_catalog(assets, args.mode, args.out_cc, args.out_h)
     total = sum(len(c) for _, c in assets)
     print(
-        f"Wrote {len(assets)} assets mode={CATALOG_MODE} "
-        f"({len(data_files)} .data, 0 rule confs) "
+        f"Wrote {len(assets)} assets mode={args.mode} "
+        f"({len(data_files)} .data, {conf_count} rule confs, "
+        f"{pm_in_rules} @pmFromFile refs in confs) "
         f"({total / 1024 / 1024:.2f} MiB) -> {args.out_cc}"
     )
     return 0

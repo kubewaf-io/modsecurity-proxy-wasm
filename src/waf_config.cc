@@ -1034,10 +1034,19 @@ void fillBlockOptions(const std::string& config, WafBlockOptions& out) {
       out.message = msg;
     }
     out.status = extractJsonIntValue(block_obj, "status", 0);
+    // Explicit empty string is allowed to omit the marker header.
+    if (block_obj.find("\"blocked_header\"") != std::string::npos) {
+      out.blocked_header = extractJsonStringValue(block_obj, "blocked_header");
+    }
     out.add_rule_id_header = extractJsonBoolValue(block_obj, "add_rule_id_header", false);
     std::string hdr = extractJsonStringValue(block_obj, "rule_id_header");
     if (!hdr.empty()) {
       out.rule_id_header = hdr;
+    }
+    out.add_request_id_header = extractJsonBoolValue(block_obj, "add_request_id_header", false);
+    std::string req_hdr = extractJsonStringValue(block_obj, "request_id_header");
+    if (!req_hdr.empty()) {
+      out.request_id_header = req_hdr;
     }
   } else {
     std::string msg = extractJsonStringValue(config, "block_message");
@@ -1098,8 +1107,10 @@ bool parseWafPluginOptions(const std::string& config, WafPluginOptions& out) {
   // kubeWAF operator path is always fail-closed.
   if (hasKubeWafIdentity(config, &out)) {
     out.allow_fallback = false;
-    if (out.block.message == "blocked by modsecurity") {
-      out.block.message = "blocked by kubeWAF";
+    // Never expose product/vendor names on client-visible deny replies.
+    if (out.block.message == "blocked by modsecurity" ||
+        out.block.message == "blocked by kubeWAF") {
+      out.block.message = "Forbidden";
     }
     // Product dashboards expect kubewaf_waf.* unless dual_prefix was set explicitly.
     const bool dual_explicit =

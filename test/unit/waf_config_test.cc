@@ -228,9 +228,12 @@ TEST(WafConfig, ParsePluginOptionsKubeWAF) {
     },
     "metrics": {"enabled": true, "per_rule_id": false},
     "block": {
-      "message": "blocked by kubeWAF",
+      "message": "Forbidden",
+      "blocked_header": "x-blocked",
       "add_rule_id_header": true,
-      "rule_id_header": "x-kubewaf-rule-id"
+      "rule_id_header": "x-blocked-rule-id",
+      "add_request_id_header": true,
+      "request_id_header": "x-request-id"
     },
     "directives_map": {"default": ["Include @kubewaf-defaults", "SecRuleEngine On"]},
     "default_directives": "default"
@@ -245,9 +248,36 @@ TEST(WafConfig, ParsePluginOptionsKubeWAF) {
   EXPECT_FALSE(opts.metrics.per_rule_id);
   // kubeWAF identity enables dual_prefix unless metrics.dual_prefix is explicit false.
   EXPECT_TRUE(opts.metrics.dual_prefix);
-  EXPECT_EQ(opts.block.message, "blocked by kubeWAF");
+  EXPECT_EQ(opts.block.message, "Forbidden");
+  EXPECT_EQ(opts.block.blocked_header, "x-blocked");
   EXPECT_TRUE(opts.block.add_rule_id_header);
-  EXPECT_EQ(opts.block.rule_id_header, "x-kubewaf-rule-id");
+  EXPECT_EQ(opts.block.rule_id_header, "x-blocked-rule-id");
+  EXPECT_TRUE(opts.block.add_request_id_header);
+  EXPECT_EQ(opts.block.request_id_header, "x-request-id");
+}
+
+TEST(WafConfig, LegacyBrandedBlockMessageRewritten) {
+  const std::string cfg = R"({
+    "mode": "kubewaf",
+    "config_id": "kubewaf/shop/shop-waf",
+    "block": { "message": "blocked by kubeWAF" },
+    "directives_map": {"default": ["SecRuleEngine On"]},
+    "default_directives": "default"
+  })";
+  WafPluginOptions opts;
+  ASSERT_TRUE(parseWafPluginOptions(cfg, opts));
+  EXPECT_EQ(opts.block.message, "Forbidden");
+}
+
+TEST(WafConfig, EmptyBlockedHeaderOmitsMarker) {
+  const std::string cfg = R"({
+    "block": { "blocked_header": "" },
+    "directives_map": {"default": ["SecRuleEngine On"]},
+    "default_directives": "default"
+  })";
+  WafPluginOptions opts;
+  ASSERT_TRUE(parseWafPluginOptions(cfg, opts));
+  EXPECT_TRUE(opts.block.blocked_header.empty());
 }
 
 TEST(WafConfig, KubeWafCanDisableDualPrefix) {

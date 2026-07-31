@@ -829,11 +829,18 @@ int ModSecContext::processIntervention(const char* phase) {
 void ModSecContext::sendBlockLocalResponse(int status) {
   if (status < 100 || status > 599) status = 403;
   const auto& block = rootContext()->plugin_options_.block;
-  std::string details = block.message.empty() ? "blocked by kubeWAF" : block.message;
+  // Client-visible details stay product-neutral (no vendor/product names).
+  std::string details = block.message.empty() ? "Forbidden" : block.message;
   std::vector<std::pair<std::string, std::string>> extra_headers;
-  extra_headers.emplace_back("x-kubewaf-blocked", "1");
+  // Generic marker only; empty blocked_header omits it entirely.
+  if (!block.blocked_header.empty()) {
+    extra_headers.emplace_back(block.blocked_header, "1");
+  }
   if (block.add_rule_id_header && last_disruptive_rule_id_ > 0 && !block.rule_id_header.empty()) {
     extra_headers.emplace_back(block.rule_id_header, std::to_string(last_disruptive_rule_id_));
+  }
+  if (block.add_request_id_header && !request_id_.empty() && !block.request_id_header.empty()) {
+    extra_headers.emplace_back(block.request_id_header, request_id_);
   }
   sendLocalResponse(static_cast<uint32_t>(status), details, "", extra_headers);
 }
@@ -931,7 +938,8 @@ void ModSecContext::runLoggingPhaseIfNeeded() {
 }
 
 FilterDataStatus ModSecContext::sanitizeInterruptedResponseBody(size_t body_buffer_length) {
-  static const char kBlocked[] = "blocked by modsecurity\n";
+  // Product-neutral body replacement when a response-phase interrupt is sanitized.
+  static const char kBlocked[] = "Forbidden\n";
   const std::string blocked(kBlocked);
   if (!response_body_interrupted_) {
     rootContext()->metrics_.countResponseBodySanitized();
