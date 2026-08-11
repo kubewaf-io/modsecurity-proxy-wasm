@@ -13,7 +13,7 @@ WASM_OUT := dist/modsecurity-proxy-wasm.wasm
 # --- Pinned dependencies (Renovate: customManagers:makefileVersions + renovate.json) ---
 
 # renovate: datasource=github-tags depName=emscripten-core/emsdk versioning=semver-coerced
-EMSDK_VERSION ?= 6.0.4
+EMSDK_VERSION ?= 6.0.5
 
 # renovate: datasource=github-tags depName=proxy-wasm/proxy-wasm-cpp-sdk versioning=git
 PROXY_WASM_CPP_SDK_VERSION ?= 727de65b37507611b76123316c6832581f42d4f0
