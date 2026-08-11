@@ -3,6 +3,7 @@
 #include <cstring>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 #include "generated/rules_catalog.h"
 
@@ -11,6 +12,10 @@ namespace {
 constexpr char kRulesDir[] = "/modsecurity-proxy-wasm-rules";
 constexpr char kCrsDataPrefix[] = "@crs-data/";
 constexpr size_t kCrsDataPrefixLen = sizeof(kCrsDataPrefix) - 1;
+
+// Configure-scoped runtime map (basename → body). Preferred over catalog.
+// Single-threaded sequential onConfigure assumption (proxy-wasm V8).
+std::unordered_map<std::string, std::string> g_runtime_data_files;
 
 std::string ruleRefPathImpl(const char* label) {
   static thread_local std::string ref;
@@ -73,6 +78,8 @@ int countCrsDataFiles() {
 // Called from ModSecurity PmFromFile (patched) instead of ifstream when the
 // Envoy V8 runtime has no writable filesystem. name is a CRS .data basename
 // (e.g. "scanners-user-agents.data") or a path ending in that basename.
+// Prefer runtime data_files (path-b operator inject); fall back to @crs-data catalog
+// only when present (full / Path A builds).
 extern "C" const char* modsecurity_proxy_wasm_resolve_data_file(const char* name,
                                                                 std::size_t* out_size) {
   if (name == nullptr || name[0] == '\0') {
@@ -90,6 +97,18 @@ extern "C" const char* modsecurity_proxy_wasm_resolve_data_file(const char* name
     return nullptr;
   }
 
+  // 1) Configure-scoped runtime map (plugin JSON data_files) — primary for path-b.
+  if (!g_runtime_data_files.empty()) {
+    auto it = g_runtime_data_files.find(base);
+    if (it != g_runtime_data_files.end()) {
+      if (out_size != nullptr) {
+        *out_size = it->second.size();
+      }
+      return it->second.data();
+    }
+  }
+
+  // 2) Optional embedded CRS catalog (full catalog builds only; path-b embeds none).
   std::string key;
   key.reserve(kCrsDataPrefixLen + std::strlen(base));
   key.append(kCrsDataPrefix);
@@ -105,11 +124,24 @@ extern "C" const char* modsecurity_proxy_wasm_resolve_data_file(const char* name
   return asset->data;
 }
 
+void modsecurity_proxy_wasm_set_runtime_data_files(
+    const std::unordered_map<std::string, std::string>& files) {
+  g_runtime_data_files = files;
+}
+
+void modsecurity_proxy_wasm_clear_runtime_data_files() {
+  g_runtime_data_files.clear();
+}
+
 bool modsecurity_proxy_wasm_mount_crs_data_files() {
-  // Envoy's wasm runtime does not provide a writable host FS for fopen/mkdir.
-  // Phrase lists stay in the embedded catalog and are served to PmFromFile via
-  // modsecurity_proxy_wasm_resolve_data_file (see ModSecurity patch).
-  return countCrsDataFiles() > 0;
+  // Envoy V8 has no writable host FS. Phrase lists are served via
+  // modsecurity_proxy_wasm_resolve_data_file from:
+  //   1) plugin JSON data_files (path-b / operator inject) and/or
+  //   2) optional @crs-data catalog (full builds only).
+  // Empty catalog is OK for path-b when rules either need no @pmFromFile or
+  // receive bodies via data_files. Missing basenames fail at PmFromFile::init.
+  (void)countCrsDataFiles();
+  return true;
 }
 
 const char* modsecurity_proxy_wasm_rule_ref_path(const char* label) {
