@@ -164,6 +164,8 @@ envoy_cluster_upstream_rq_retry_overflow{envoy_cluster_name="local_backend"} 0
 envoy_cluster_upstream_rq_retry_success{envoy_cluster_name="local_backend"} 0
 # TYPE envoy_cluster_upstream_rq_rx_reset counter
 envoy_cluster_upstream_rq_rx_reset{envoy_cluster_name="local_backend"} 0
+# TYPE envoy_cluster_upstream_rq_rx_reset_no_error counter
+envoy_cluster_upstream_rq_rx_reset_no_error{envoy_cluster_name="local_backend"} 0
 # TYPE envoy_cluster_upstream_rq_timeout counter
 envoy_cluster_upstream_rq_timeout{envoy_cluster_name="local_backend"} 0
 # TYPE envoy_cluster_upstream_rq_total counter
@@ -543,35 +545,19 @@ envoy_listener_no_filter_chain_match{envoy_listener_address="0.0.0.0_8080"} 0
 envoy_listener_no_filter_chain_match{envoy_listener_address="127.0.0.1_19000"} 0
 # TYPE envoy_listener_worker_downstream_cx_total counter
 envoy_listener_worker_downstream_cx_total{envoy_worker_id="0",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="1",envoy_listener_address="0.0.0.0_8080"} 1
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="10",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="11",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="2",envoy_listener_address="0.0.0.0_8080"} 0
+envoy_listener_worker_downstream_cx_total{envoy_worker_id="1",envoy_listener_address="0.0.0.0_8080"} 0
+envoy_listener_worker_downstream_cx_total{envoy_worker_id="2",envoy_listener_address="0.0.0.0_8080"} 1
 envoy_listener_worker_downstream_cx_total{envoy_worker_id="3",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="4",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="5",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="6",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="7",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="8",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="9",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="0",envoy_listener_address="127.0.0.1_19000"} 0
+envoy_listener_worker_downstream_cx_total{envoy_worker_id="0",envoy_listener_address="127.0.0.1_19000"} 1
 envoy_listener_worker_downstream_cx_total{envoy_worker_id="1",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="10",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="11",envoy_listener_address="127.0.0.1_19000"} 0
 envoy_listener_worker_downstream_cx_total{envoy_worker_id="2",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="3",envoy_listener_address="127.0.0.1_19000"} 1
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="4",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="5",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="6",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="7",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="8",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_total{envoy_worker_id="9",envoy_listener_address="127.0.0.1_19000"} 0
+envoy_listener_worker_downstream_cx_total{envoy_worker_id="3",envoy_listener_address="127.0.0.1_19000"} 0
 # TYPE envoy_listener_manager_listener_added counter
 envoy_listener_manager_listener_added{} 2
 # TYPE envoy_listener_manager_listener_create_failure counter
 envoy_listener_manager_listener_create_failure{} 0
 # TYPE envoy_listener_manager_listener_create_success counter
-envoy_listener_manager_listener_create_success{} 24
+envoy_listener_manager_listener_create_success{} 8
 # TYPE envoy_listener_manager_listener_in_place_updated counter
 envoy_listener_manager_listener_in_place_updated{} 0
 # TYPE envoy_listener_manager_listener_modified counter
@@ -589,11 +575,11 @@ envoy_runtime_deprecated_feature_use{} 1
 # TYPE envoy_runtime_load_error counter
 envoy_runtime_load_error{} 0
 # TYPE envoy_runtime_load_success counter
-envoy_runtime_load_success{} 1
+envoy_runtime_load_success{} 2
 # TYPE envoy_runtime_override_dir_exists counter
 envoy_runtime_override_dir_exists{} 0
 # TYPE envoy_runtime_override_dir_not_exists counter
-envoy_runtime_override_dir_not_exists{} 1
+envoy_runtime_override_dir_not_exists{} 2
 # TYPE envoy_server_debug_assertion_failures counter
 envoy_server_debug_assertion_failures{} 0
 # TYPE envoy_server_dropped_stat_flushes counter
@@ -615,31 +601,15 @@ envoy_server_wip_protos{} 0
 # TYPE envoy_server_worker_watchdog_mega_miss counter
 envoy_server_worker_watchdog_mega_miss{envoy_worker_id="0"} 0
 envoy_server_worker_watchdog_mega_miss{envoy_worker_id="1"} 0
-envoy_server_worker_watchdog_mega_miss{envoy_worker_id="10"} 0
-envoy_server_worker_watchdog_mega_miss{envoy_worker_id="11"} 0
 envoy_server_worker_watchdog_mega_miss{envoy_worker_id="2"} 0
 envoy_server_worker_watchdog_mega_miss{envoy_worker_id="3"} 0
-envoy_server_worker_watchdog_mega_miss{envoy_worker_id="4"} 0
-envoy_server_worker_watchdog_mega_miss{envoy_worker_id="5"} 0
-envoy_server_worker_watchdog_mega_miss{envoy_worker_id="6"} 0
-envoy_server_worker_watchdog_mega_miss{envoy_worker_id="7"} 0
-envoy_server_worker_watchdog_mega_miss{envoy_worker_id="8"} 0
-envoy_server_worker_watchdog_mega_miss{envoy_worker_id="9"} 0
 # TYPE envoy_server_worker_watchdog_miss counter
 envoy_server_worker_watchdog_miss{envoy_worker_id="0"} 0
 envoy_server_worker_watchdog_miss{envoy_worker_id="1"} 0
-envoy_server_worker_watchdog_miss{envoy_worker_id="10"} 0
-envoy_server_worker_watchdog_miss{envoy_worker_id="11"} 0
 envoy_server_worker_watchdog_miss{envoy_worker_id="2"} 0
 envoy_server_worker_watchdog_miss{envoy_worker_id="3"} 0
-envoy_server_worker_watchdog_miss{envoy_worker_id="4"} 0
-envoy_server_worker_watchdog_miss{envoy_worker_id="5"} 0
-envoy_server_worker_watchdog_miss{envoy_worker_id="6"} 0
-envoy_server_worker_watchdog_miss{envoy_worker_id="7"} 0
-envoy_server_worker_watchdog_miss{envoy_worker_id="8"} 0
-envoy_server_worker_watchdog_miss{envoy_worker_id="9"} 0
 # TYPE envoy_wasm_envoy_wasm_runtime_v8_created counter
-envoy_wasm_envoy_wasm_runtime_v8_created{} 15
+envoy_wasm_envoy_wasm_runtime_v8_created{} 7
 # TYPE envoy_wasm_modsecurity_proxy_wasm_vm_reload counter
 envoy_wasm_modsecurity_proxy_wasm_vm_reload{} 0
 # TYPE envoy_wasm_modsecurity_proxy_wasm_vm_reload_backoff counter
@@ -773,28 +743,12 @@ envoy_listener_downstream_pre_cx_active{envoy_listener_address="127.0.0.1_19000"
 # TYPE envoy_listener_worker_downstream_cx_active gauge
 envoy_listener_worker_downstream_cx_active{envoy_worker_id="0",envoy_listener_address="0.0.0.0_8080"} 0
 envoy_listener_worker_downstream_cx_active{envoy_worker_id="1",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="10",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="11",envoy_listener_address="0.0.0.0_8080"} 0
 envoy_listener_worker_downstream_cx_active{envoy_worker_id="2",envoy_listener_address="0.0.0.0_8080"} 0
 envoy_listener_worker_downstream_cx_active{envoy_worker_id="3",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="4",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="5",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="6",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="7",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="8",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="9",envoy_listener_address="0.0.0.0_8080"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="0",envoy_listener_address="127.0.0.1_19000"} 0
+envoy_listener_worker_downstream_cx_active{envoy_worker_id="0",envoy_listener_address="127.0.0.1_19000"} 1
 envoy_listener_worker_downstream_cx_active{envoy_worker_id="1",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="10",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="11",envoy_listener_address="127.0.0.1_19000"} 0
 envoy_listener_worker_downstream_cx_active{envoy_worker_id="2",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="3",envoy_listener_address="127.0.0.1_19000"} 1
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="4",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="5",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="6",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="7",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="8",envoy_listener_address="127.0.0.1_19000"} 0
-envoy_listener_worker_downstream_cx_active{envoy_worker_id="9",envoy_listener_address="127.0.0.1_19000"} 0
+envoy_listener_worker_downstream_cx_active{envoy_worker_id="3",envoy_listener_address="127.0.0.1_19000"} 0
 # TYPE envoy_listener_manager_total_filter_chains_draining gauge
 envoy_listener_manager_total_filter_chains_draining{} 0
 # TYPE envoy_listener_manager_total_listeners_active gauge
@@ -803,6 +757,8 @@ envoy_listener_manager_total_listeners_active{} 2
 envoy_listener_manager_total_listeners_draining{} 0
 # TYPE envoy_listener_manager_total_listeners_warming gauge
 envoy_listener_manager_total_listeners_warming{} 0
+# TYPE envoy_listener_manager_workers_pinned gauge
+envoy_listener_manager_workers_pinned{} 0
 # TYPE envoy_listener_manager_workers_started gauge
 envoy_listener_manager_workers_started{} 1
 # TYPE envoy_runtime_admin_overrides_active gauge
@@ -816,7 +772,7 @@ envoy_runtime_num_layers{} 0
 # TYPE envoy_server_compilation_settings_fips_mode gauge
 envoy_server_compilation_settings_fips_mode{} 0
 # TYPE envoy_server_concurrency gauge
-envoy_server_concurrency{} 12
+envoy_server_concurrency{} 4
 # TYPE envoy_server_days_until_first_cert_expiring gauge
 envoy_server_days_until_first_cert_expiring{} 4294967295
 # TYPE envoy_server_hot_restart_epoch gauge
@@ -826,11 +782,11 @@ envoy_server_hot_restart_generation{} 1
 # TYPE envoy_server_live gauge
 envoy_server_live{} 1
 # TYPE envoy_server_memory_allocated gauge
-envoy_server_memory_allocated{} 28200408
+envoy_server_memory_allocated{} 29957944
 # TYPE envoy_server_memory_heap_size gauge
-envoy_server_memory_heap_size{} 182452224
+envoy_server_memory_heap_size{} 125829120
 # TYPE envoy_server_memory_physical_size gauge
-envoy_server_memory_physical_size{} 185527102
+envoy_server_memory_physical_size{} 116321086
 # TYPE envoy_server_parent_connections gauge
 envoy_server_parent_connections{} 0
 # TYPE envoy_server_seconds_until_first_ocsp_response_expiring gauge
@@ -838,34 +794,28 @@ envoy_server_seconds_until_first_ocsp_response_expiring{} 0
 # TYPE envoy_server_state gauge
 envoy_server_state{} 0
 # TYPE envoy_server_stats_recent_lookups gauge
-envoy_server_stats_recent_lookups{} 2275
+envoy_server_stats_recent_lookups{} 1843
 # TYPE envoy_server_total_connections gauge
 envoy_server_total_connections{} 0
 # TYPE envoy_server_uptime gauge
 envoy_server_uptime{} 1
 # TYPE envoy_server_version gauge
-envoy_server_version{} 966607
+envoy_server_version{} 10153319
 # TYPE envoy_thread_local_cluster_manager_main_thread_clusters_inflated gauge
 envoy_thread_local_cluster_manager_main_thread_clusters_inflated{} 1
 # TYPE envoy_thread_local_cluster_manager_worker_clusters_inflated gauge
 envoy_thread_local_cluster_manager_worker_clusters_inflated{envoy_worker_id="0"} 1
 envoy_thread_local_cluster_manager_worker_clusters_inflated{envoy_worker_id="1"} 1
-envoy_thread_local_cluster_manager_worker_clusters_inflated{envoy_worker_id="10"} 1
-envoy_thread_local_cluster_manager_worker_clusters_inflated{envoy_worker_id="11"} 1
 envoy_thread_local_cluster_manager_worker_clusters_inflated{envoy_worker_id="2"} 1
 envoy_thread_local_cluster_manager_worker_clusters_inflated{envoy_worker_id="3"} 1
-envoy_thread_local_cluster_manager_worker_clusters_inflated{envoy_worker_id="4"} 1
-envoy_thread_local_cluster_manager_worker_clusters_inflated{envoy_worker_id="5"} 1
-envoy_thread_local_cluster_manager_worker_clusters_inflated{envoy_worker_id="6"} 1
-envoy_thread_local_cluster_manager_worker_clusters_inflated{envoy_worker_id="7"} 1
-envoy_thread_local_cluster_manager_worker_clusters_inflated{envoy_worker_id="8"} 1
-envoy_thread_local_cluster_manager_worker_clusters_inflated{envoy_worker_id="9"} 1
 # TYPE envoy_wasm_envoy_wasm_runtime_v8_active gauge
-envoy_wasm_envoy_wasm_runtime_v8_active{} 14
+envoy_wasm_envoy_wasm_runtime_v8_active{} 6
 # TYPE envoy_wasm_remote_load_cache_entries gauge
 envoy_wasm_remote_load_cache_entries{} 0
+# TYPE envoy_wasm_wasm_vm_count gauge
+envoy_wasm_wasm_vm_count{} 6
 # TYPE modsecurity_proxy_wasm_memory_wasm_heap_bytes gauge
-modsecurity_proxy_wasm_memory_wasm_heap_bytes{owner="modsecurity-proxy-wasm",identifier="configure-stress"} 33554432
+modsecurity_proxy_wasm_memory_wasm_heap_bytes{owner="modsecurity-proxy-wasm",identifier="configure-stress"} 16777216
 # TYPE envoy_cluster_external_upstream_rq_time histogram
 envoy_cluster_external_upstream_rq_time_bucket{envoy_cluster_name="local_backend",le="0.5"} 0
 envoy_cluster_external_upstream_rq_time_bucket{envoy_cluster_name="local_backend",le="1"} 0

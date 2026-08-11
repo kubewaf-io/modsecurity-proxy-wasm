@@ -26,16 +26,22 @@ FTW_INCLUDE='^941.*' make test-regression    # XSS suite subset (CI)
 
 ### Configure stress / memory ladder (WS0–M1)
 
-Default link floor is **32 MiB** (`INITIAL_MEMORY`, growth to 512 MiB).
+Default link floor depends on catalog mode (`INITIAL_MEMORY`, growth to 512 MiB):
+
+| Mode | Default `INITIAL_MEMORY` |
+|------|--------------------------|
+| **path-b** (default) | **16 MiB** (no embedded `@crs-data`) |
+| **full** | **32 MiB** |
+
 Plugin logs emit `"event":"heap_sample"` with `stage` + `wasm_heap_bytes` during
 `onConfigure`. Re-run the gate before changing the floor:
 
 ```bash
 make modsecurity-proxy-wasm.wasm
 make test-configure-stress
-# Harder: SCORE_RULES=300 CONFIGURE_HEAP_BUDGET_BYTES=33554432 make test-configure-stress
+# Harder: SCORE_RULES=300 CONFIGURE_HEAP_BUDGET_BYTES=16777216 make test-configure-stress
 # Raise floor if production Path B OOMs:
-#   INITIAL_MEMORY=64MB make modsecurity-proxy-wasm.wasm
+#   INITIAL_MEMORY=32MB make modsecurity-proxy-wasm.wasm
 ```
 
 Results: `test/integration/.configure-stress/out/memory-snapshot.json` and

@@ -1,2 +1,2 @@
 # TYPE modsecurity_proxy_wasm_memory_wasm_heap_bytes gauge
-modsecurity_proxy_wasm_memory_wasm_heap_bytes{owner="modsecurity-proxy-wasm",identifier="configure-stress"} 33554432
+modsecurity_proxy_wasm_memory_wasm_heap_bytes{owner="modsecurity-proxy-wasm",identifier="configure-stress"} 16777216

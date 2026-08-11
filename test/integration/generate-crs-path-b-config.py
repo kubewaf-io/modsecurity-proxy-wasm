@@ -4,7 +4,8 @@
 Emits the same shape kubeWAF uses in production:
   Include @kubewaf-defaults + CRS setup marker + flattened rule confs
   (gzip+base64 by default). CRS rule confs are NOT embedded in the wasm;
-  @pmFromFile basenames resolve via the path-b catalog.
+  @pmFromFile bodies are injected via plugin JSON data_files (same as the
+  operator pack), not via a prebuilt @crs-data catalog in path-b builds.
 
 Profiles
 --------
@@ -475,10 +476,19 @@ def main() -> int:
         return 1
 
     joined = "\n".join(directives) + "\n"
+    # Inject CRS *.data as data_files (path-b wasm no longer embeds @crs-data).
+    data_files: dict[str, str] = {}
+    rules_dir = crs / "rules"
+    for path in sorted(rules_dir.glob("*.data")):
+        data_files[path.name] = base64.b64encode(path.read_bytes()).decode("ascii")
+    stats["data_files"] = len(data_files)
+
     if args.plain:
         plugin = {
             "directives_map": {"default": directives},
             "default_directives": "default",
+            "data_files": data_files,
+            "data_files_encoding": "base64",
             "metric_labels": {
                 "owner": "modsecurity-proxy-wasm",
                 "identifier": f"crs-soak-{args.profile}",
@@ -511,6 +521,8 @@ def main() -> int:
                 "pm_from_file_refs": stats["pm_from_file_refs"],
                 "conf_files": len(stats["conf_files"]),
             },
+            "data_files": data_files,
+            "data_files_encoding": "base64",
             "metric_labels": {
                 "owner": "modsecurity-proxy-wasm",
                 "identifier": f"crs-soak-{args.profile}",
