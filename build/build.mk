@@ -47,25 +47,12 @@ MODSEC_CONFIGURE_FLAGS := \
 	--disable-debug-logs --disable-mutex-on-pm --without-lmdb --without-maxmind \
 	--without-ssdeep
 
-# Memory (Envoy V8 reserves Wasm linear memory *per worker VM*):
-# - alpha9 raised INITIAL 16→64MB after CRS configure hit "unreachable".
-# - alpha11 raised INITIAL 64→128MB for Path B chains + @pmFromFile automata.
-# - Validated 32MB (2026-07-28): synthetic stress + full CRS Path B soak under
-#   Envoy V8; heap stayed at floor (no growth). Raise to 64MB/128MB if Path B OOM.
-# - ALLOW_MEMORY_GROWTH is on: can grow toward MAXIMUM under heavy loads.
+# Memory (Envoy V8 reserves Wasm linear memory *per worker VM*).
+# Defaults depend on CATALOG_MODE (set below). ALLOW_MEMORY_GROWTH is on.
+# Override: INITIAL_MEMORY=32MB make modsecurity-proxy-wasm.wasm
 # Do not put # comments inside the continued EMSCRIPTEN_LINK_OPTS assignment.
-INITIAL_MEMORY ?= 32MB
 MAXIMUM_MEMORY ?= 512MB
 STACK_SIZE     ?= 4MB
-
-EMSCRIPTEN_LINK_OPTS := --no-entry \
-	-sSTANDALONE_WASM -sEXPORTED_FUNCTIONS=_malloc -sFILESYSTEM=1 \
-	-sALLOW_MEMORY_GROWTH=1 \
-	-sINITIAL_MEMORY=$(INITIAL_MEMORY) \
-	-sMAXIMUM_MEMORY=$(MAXIMUM_MEMORY) \
-	-sSTACK_SIZE=$(STACK_SIZE) \
-	-sDISABLE_EXCEPTION_CATCHING=1 \
-	-sUSE_ZLIB=1
 
 PLUGIN_SRCS := \
 	$(BUILD_DIR)/src/modsecurity_proxy_wasm.cc \
@@ -223,15 +210,18 @@ $(STAMPS_DIR)/libxml2: | $(STAMPS_DIR)/emsdk
 	touch $@
 
 $(STAMPS_DIR)/modsecurity: $(STAMPS_DIR)/pcre2 $(STAMPS_DIR)/yajl $(STAMPS_DIR)/libxml2 \
-		$(BUILD_DIR)/build/patches/modsecurity-pm-from-file-catalog.patch
+		$(BUILD_DIR)/build/patches/modsecurity-pm-from-file-catalog.patch \
+		$(BUILD_DIR)/build/patches/modsecurity-ip-match-from-file-catalog.patch
 	@mkdir -p $(STAMPS_DIR) $(PREFIX)
 	rm -rf $(MODSEC_SRC)
 	git clone https://github.com/owasp-modsecurity/ModSecurity.git $(MODSEC_SRC)
 	cd $(MODSEC_SRC) && git checkout $(MODSECURITY_SHA)
 	test "$$(git -C $(MODSEC_SRC) rev-parse HEAD)" = "$(MODSECURITY_SHA)"
 	cd $(MODSEC_SRC) && git submodule update --init --recursive
-	# Serve CRS .data phrase lists from the proxy-wasm catalog (Envoy V8 has no MEMFS).
+	# Serve @pmFromFile / @ipMatchFromFile bodies via proxy-wasm resolve_data_file
+	# (Envoy V8 has no host FS for phrase/IP list files).
 	cd $(MODSEC_SRC) && patch -p1 < $(BUILD_DIR)/build/patches/modsecurity-pm-from-file-catalog.patch
+	cd $(MODSEC_SRC) && patch -p1 < $(BUILD_DIR)/build/patches/modsecurity-ip-match-from-file-catalog.patch
 	cd $(MODSEC_SRC) && ./build.sh
 	cd $(MODSEC_SRC) && $(EMS_ENV) \
 		PKG_CONFIG_PATH=$(PCRE2_EM)/lib/pkgconfig:$(YAJL_EM)/lib/pkgconfig:$(LIBXML2_EM)/lib/pkgconfig \
@@ -260,15 +250,47 @@ $(STAMPS_DIR)/crs:
 	touch $@
 
 # Catalog modes (build-time embed into the .wasm):
-#   path-b (default, first-class) — helpers + @crs-data/*.data only.
-#     CRS *rules* come from structured SecRule CRs at runtime (kubeWAF Path B).
-#   full (second-class) — also embed @crs-setup-conf + @owasp_crs/*.conf for
-#     Path A ``crsEnable: true`` / ``Include @owasp_crs``. Publish as *-full tags.
+#   path-b (default, first-class) — helpers only (@kubewaf-defaults / @demo / @ftw).
+#     CRS *rules* come from structured SecRule CRs (kubeWAF Path B).
+#     @pmFromFile bodies arrive via plugin JSON data_files (operator inject),
+#     not as prebuilt @crs-data/*.data in the wasm binary.
+#   full (second-class) — also embed @crs-setup-conf + @owasp_crs/*.conf +
+#     @crs-data/*.data for Path A ``crsEnable: true``. Publish as *-full tags.
 # Switching modes regenerates the catalog (stamp includes the mode name).
 CATALOG_MODE ?= path-b
 CATALOG_MODE_STAMP := $(BUILD_DIR)/src/generated/.catalog_mode_$(CATALOG_MODE)
 
-$(GENERATED_CC) $(GENERATED_H) $(CATALOG_MODE_STAMP): $(STAMPS_DIR)/crs \
+# INITIAL_MEMORY defaults (Envoy V8 per-worker reservation):
+# - path-b: 16MB (no embedded @crs-data; growth allowed for large data_files / CRS soak)
+# - full:   32MB (embedded CRS confs + .data; prior Path A floor)
+# History: alpha9 16→64, alpha11 64→128, then 32 validated with embedded data (2026-07-28).
+ifeq ($(origin INITIAL_MEMORY),undefined)
+  ifeq ($(CATALOG_MODE),full)
+    INITIAL_MEMORY := 32MB
+  else
+    INITIAL_MEMORY := 16MB
+  endif
+endif
+
+EMSCRIPTEN_LINK_OPTS := --no-entry \
+	-sSTANDALONE_WASM -sEXPORTED_FUNCTIONS=_malloc -sFILESYSTEM=1 \
+	-sALLOW_MEMORY_GROWTH=1 \
+	-sINITIAL_MEMORY=$(INITIAL_MEMORY) \
+	-sMAXIMUM_MEMORY=$(MAXIMUM_MEMORY) \
+	-sSTACK_SIZE=$(STACK_SIZE) \
+	-sDISABLE_EXCEPTION_CATCHING=1 \
+	-sUSE_ZLIB=1
+
+# path-b does not need a CRS tree. full still does (rules + .data).
+ifeq ($(CATALOG_MODE),full)
+CATALOG_CRS_DEP := $(STAMPS_DIR)/crs
+CATALOG_CRS_ARG := --crs $(CRS_DIR)
+else
+CATALOG_CRS_DEP :=
+CATALOG_CRS_ARG :=
+endif
+
+$(GENERATED_CC) $(GENERATED_H) $(CATALOG_MODE_STAMP): $(CATALOG_CRS_DEP) \
 		$(BUILD_RULES_DIR)/demo-conf.conf \
 		$(BUILD_RULES_DIR)/ftw-config.conf \
 		$(BUILD_RULES_DIR)/kubewaf-defaults.conf \
@@ -277,7 +299,7 @@ $(GENERATED_CC) $(GENERATED_H) $(CATALOG_MODE_STAMP): $(STAMPS_DIR)/crs \
 	@rm -f $(BUILD_DIR)/src/generated/.catalog_mode_*
 	python3 $(BUILD_SCRIPTS_DIR)/generate_rules_catalog.py \
 		--mode $(CATALOG_MODE) \
-		--crs $(CRS_DIR) \
+		$(CATALOG_CRS_ARG) \
 		--demo $(BUILD_RULES_DIR)/demo-conf.conf \
 		--ftw $(BUILD_RULES_DIR)/ftw-config.conf \
 		--kubewaf-defaults $(BUILD_RULES_DIR)/kubewaf-defaults.conf \

@@ -1093,6 +1093,130 @@ bool parseWafMetricOptions(const std::string& config, WafMetricOptions& out) {
   return true;
 }
 
+// Max sizes for runtime data_files inflate (aligned with operator 2 MiB budget).
+static constexpr std::size_t kMaxDataFileInflatedBytes = 2 * 1024 * 1024;
+static constexpr std::size_t kMaxDataFilesTotalInflatedBytes = 2 * 1024 * 1024;
+
+// Minimal object-map extractor: "data_files": { "a.data": "b64...", ... }
+// Values must be JSON strings (base64 or gzip+base64 payloads).
+bool extractDataFilesObject(const std::string& json,
+                            std::unordered_map<std::string, std::string>& encoded,
+                            std::string& error) {
+  encoded.clear();
+  const std::string key = "\"data_files\"";
+  size_t pos = json.find(key);
+  if (pos == std::string::npos) {
+    return true;  // optional
+  }
+  pos = json.find('{', pos + key.size());
+  if (pos == std::string::npos) {
+    error = "data_files is not an object";
+    return false;
+  }
+  size_t i = pos + 1;
+  while (i < json.size()) {
+    while (i < json.size() && (json[i] == ' ' || json[i] == '\n' || json[i] == '\r' ||
+                               json[i] == '\t' || json[i] == ',')) {
+      ++i;
+    }
+    if (i < json.size() && json[i] == '}') {
+      return true;
+    }
+    if (i >= json.size() || json[i] != '"') {
+      error = "data_files: expected string key";
+      return false;
+    }
+    ++i;
+    size_t key_end = i;
+    while (key_end < json.size() && json[key_end] != '"') {
+      if (json[key_end] == '\\') ++key_end;  // skip escaped
+      ++key_end;
+    }
+    if (key_end >= json.size()) {
+      error = "data_files: unterminated key";
+      return false;
+    }
+    std::string fname = json.substr(i, key_end - i);
+    i = key_end + 1;
+    while (i < json.size() && (json[i] == ' ' || json[i] == '\t' || json[i] == ':')) ++i;
+    if (i >= json.size() || json[i] != '"') {
+      error = "data_files: expected string value for " + fname;
+      return false;
+    }
+    ++i;
+    std::string val;
+    while (i < json.size() && json[i] != '"') {
+      if (json[i] == '\\' && i + 1 < json.size()) {
+        val.push_back(json[i + 1]);
+        i += 2;
+        continue;
+      }
+      val.push_back(json[i++]);
+    }
+    if (i >= json.size()) {
+      error = "data_files: unterminated value for " + fname;
+      return false;
+    }
+    ++i;  // closing quote
+    encoded[fname] = std::move(val);
+  }
+  error = "data_files: unclosed object";
+  return false;
+}
+
+bool parseDataFiles(const std::string& config,
+                    std::unordered_map<std::string, std::string>& out,
+                    std::string& error) {
+  out.clear();
+  error.clear();
+  if (!looksLikeJson(trim(config))) {
+    return true;
+  }
+  std::unordered_map<std::string, std::string> encoded;
+  if (!extractDataFilesObject(config, encoded, error)) {
+    return false;
+  }
+  if (encoded.empty()) {
+    return true;
+  }
+  std::string encoding = extractJsonStringValue(config, "data_files_encoding");
+  if (encoding.empty()) {
+    encoding = "base64";
+  }
+  std::size_t total = 0;
+  for (const auto& kv : encoded) {
+    std::string decoded;
+    if (encoding == "gzip+base64" || encoding == "gzip") {
+      std::string compressed;
+      if (!base64Decode(kv.second, compressed, error)) {
+        error = "data_files[" + kv.first + "]: " + error;
+        return false;
+      }
+      if (!gzipInflate(compressed, decoded, error)) {
+        error = "data_files[" + kv.first + "]: " + error;
+        return false;
+      }
+    } else {
+      // base64 (plain)
+      if (!base64Decode(kv.second, decoded, error)) {
+        error = "data_files[" + kv.first + "]: " + error;
+        return false;
+      }
+    }
+    if (decoded.size() > kMaxDataFileInflatedBytes) {
+      error = "data_files[" + kv.first + "]: exceeds max inflated size";
+      return false;
+    }
+    total += decoded.size();
+    if (total > kMaxDataFilesTotalInflatedBytes) {
+      error = "data_files total inflated size exceeds max";
+      return false;
+    }
+    out[kv.first] = std::move(decoded);
+  }
+  return true;
+}
+
 bool parseWafPluginOptions(const std::string& config, WafPluginOptions& out) {
   out = WafPluginOptions{};
   if (!looksLikeJson(trim(config))) {

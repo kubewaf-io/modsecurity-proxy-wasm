@@ -6,12 +6,13 @@ Catalog modes
 path-b (default)
   kubeWAF Path B: structured SecRule CRs supply CRS rules. The wasm only embeds:
     - @kubewaf-defaults, @ftw-conf, @demo-conf
-    - @crs-data/*.data  (phrase lists for @pmFromFile)
-  Does NOT embed @owasp_crs/*.conf or @crs-setup-conf.
+  Does NOT embed CRS phrase lists (``@crs-data/*.data``) or CRS rule confs.
+  ``@pmFromFile`` bodies arrive at runtime via plugin JSON ``data_files``
+  (operator PhraseList inject + stock CRS pack).
 
 full
-  Legacy Path A: also embeds @crs-setup-conf and all @owasp_crs/*.conf rule files
-  for ``Include @owasp_crs/*.conf`` / ``crsEnable: true``.
+  Legacy Path A: also embeds @crs-setup-conf, @owasp_crs/*.conf, and
+  @crs-data/*.data so Include @owasp_crs / crsEnable work without operator inject.
 """
 
 from __future__ import annotations
@@ -52,10 +53,10 @@ CATALOG_MODES = ("path-b", "full")
 def wasm_safe_rule_conf(conf: str, rules_dir: Path) -> str:
     """Prepare CRS conf for wasm: keep @pmFromFile (MEMFS), disable @rxFromFile.
 
-    CRS .data phrase lists are embedded under @crs-data/* and written into
-    /modsecurity-proxy-wasm-rules at plugin start (see wasm_vfs.cc). ModSecurity
-    PmFromFile resolves basenames relative to the rule reference directory, so
-    operators stay as ``@pmFromFile scanners-user-agents.data`` etc.
+    CRS .data phrase lists for full catalog are embedded under @crs-data/* and
+    resolved by the PmFromFile catalog hook (wasm_vfs.cc). Path B leaves
+    @pmFromFile basenames to plugin JSON data_files. Operators stay as
+    ``@pmFromFile scanners-user-agents.data`` etc.
     """
     del rules_dir  # reserved for future path rewrites
     out: list[str] = []
@@ -67,7 +68,7 @@ def wasm_safe_rule_conf(conf: str, rules_dir: Path) -> str:
         if "@rxFromFile" in line:
             out.append("# wasm-disabled (no filesystem): " + line)
             continue
-        # Keep @pmFromFile as-is for runtime MEMFS resolution.
+        # Keep @pmFromFile as-is (full: catalog; path-b: runtime data_files).
         out.append(line)
     return "\n".join(out) + "\n"
 
@@ -172,7 +173,7 @@ struct RuleAsset {
   std::size_t size;
 };
 
-// "path-b" (default): helpers + @crs-data only. "full": also @owasp_crs + @crs-setup-conf.
+// "path-b" (default): helpers only (no @crs-data). "full": + @owasp_crs + @crs-setup-conf + @crs-data.
 const char* catalog_mode();
 const RuleAsset* lookup(const char* path);
 void foreach_owasp_crs(bool (*fn)(const RuleAsset&, void*), void* user);
@@ -188,7 +189,13 @@ void foreach_crs_data_file(bool (*fn)(const RuleAsset&, void*), void* user);
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--crs", type=Path, required=True, help="coreruleset checkout")
+    ap.add_argument(
+        "--crs",
+        type=Path,
+        required=False,
+        default=None,
+        help="coreruleset checkout (required for --mode=full; unused for path-b)",
+    )
     ap.add_argument("--demo", type=Path, required=True, help="demo-conf.conf")
     ap.add_argument("--ftw", type=Path, required=True, help="ftw-config.conf")
     ap.add_argument(
@@ -202,17 +209,11 @@ def main() -> int:
         "--mode",
         choices=CATALOG_MODES,
         default="path-b",
-        help="path-b: no CRS rule confs (default). full: embed Path A @owasp_crs + setup.",
+        help="path-b: helpers only (default). full: embed Path A @owasp_crs + setup + @crs-data.",
     )
     ap.add_argument("--out-cc", type=Path, default=Path("src/generated/rules_catalog.cc"))
     ap.add_argument("--out-h", type=Path, default=Path("src/generated/rules_catalog.h"))
     args = ap.parse_args()
-
-    crs = args.crs
-    rules_dir = crs / "rules"
-    if not rules_dir.is_dir():
-        print(f"ERROR: missing {rules_dir}", file=sys.stderr)
-        return 1
 
     assets: list[tuple[str, str]] = []
     assets.append(("@demo-conf", args.demo.read_text(encoding="utf-8", errors="replace")))
@@ -225,17 +226,29 @@ def main() -> int:
             ("@kubewaf-defaults", kubewaf_defaults.read_text(encoding="utf-8", errors="replace"))
         )
 
-    data_files = sorted(rules_dir.glob("*.data"))
-    if not data_files:
-        print(f"ERROR: no *.data under {rules_dir} (required for @pmFromFile)", file=sys.stderr)
-        return 1
-    for path in data_files:
-        virtual = f"{CRS_DATA_PREFIX}{path.name}"
-        assets.append((virtual, path.read_text(encoding="utf-8", errors="replace")))
-
+    data_files: list[Path] = []
     conf_count = 0
     pm_in_rules = 0
+
+    # path-b: no @crs-data — phrase lists come from plugin JSON data_files at runtime.
     if args.mode == "full":
+        if args.crs is None:
+            print("ERROR: --crs is required for --mode=full", file=sys.stderr)
+            return 1
+        crs = args.crs
+        rules_dir = crs / "rules"
+        if not rules_dir.is_dir():
+            print(f"ERROR: missing {rules_dir}", file=sys.stderr)
+            return 1
+
+        data_files = sorted(rules_dir.glob("*.data"))
+        if not data_files:
+            print(f"ERROR: no *.data under {rules_dir} (required for full @pmFromFile)", file=sys.stderr)
+            return 1
+        for path in data_files:
+            virtual = f"{CRS_DATA_PREFIX}{path.name}"
+            assets.append((virtual, path.read_text(encoding="utf-8", errors="replace")))
+
         setup_example = crs / "crs-setup.conf.example"
         if not setup_example.is_file():
             print(f"ERROR: missing {setup_example}", file=sys.stderr)

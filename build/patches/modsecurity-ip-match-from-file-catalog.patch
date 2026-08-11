@@ -1,0 +1,48 @@
+diff --git a/src/operators/ip_match_from_file.cc b/src/operators/ip_match_from_file.cc
+index a838fb45..dd4c044f 100644
+--- a/src/operators/ip_match_from_file.cc
++++ b/src/operators/ip_match_from_file.cc
+@@ -17,11 +17,17 @@
+ #include "src/utils/system.h"
+ 
+ #include <string>
++#include <cstddef>
+ 
+ #include <string.h>
+ 
+ #include "src/operators/operator.h"
+ 
++// Provided by modsecurity-proxy-wasm (wasm_vfs.cc). Weak so native
++// libmodsecurity builds without the plugin still link.
++extern "C" __attribute__((weak)) const char*
++modsecurity_proxy_wasm_resolve_data_file(const char* name, std::size_t* out_size);
++
+ namespace modsecurity {
+ namespace operators {
+ 
+@@ -34,11 +40,21 @@ bool IpMatchFromFile::init(const std::string &file,
+     if (m_param.compare(0, 8, "https://") == 0) {
+         res = m_tree.addFromUrl(m_param, &e);
+     } else {
+-        std::string resf = utils::find_resource(m_param, file, error);
+-        if (resf == "") {
+-            return false;
++        // Prefer proxy-wasm runtime/catalog data_files (Envoy V8 has no host FS).
++        std::size_t blob_size = 0;
++        const char* blob = nullptr;
++        if (modsecurity_proxy_wasm_resolve_data_file != nullptr) {
++            blob = modsecurity_proxy_wasm_resolve_data_file(m_param.c_str(), &blob_size);
++        }
++        if (blob != nullptr && blob_size > 0) {
++            res = m_tree.addFromBuffer(std::string(blob, blob_size), &e);
++        } else {
++            std::string resf = utils::find_resource(m_param, file, error);
++            if (resf == "") {
++                return false;
++            }
++            res = m_tree.addFromFile(resf, &e);
+         }
+-        res = m_tree.addFromFile(resf, &e);
+     }
+ 
+     if (res == false) {
