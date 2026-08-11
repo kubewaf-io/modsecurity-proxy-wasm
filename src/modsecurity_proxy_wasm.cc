@@ -9,6 +9,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <sstream>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -537,16 +538,31 @@ bool ModSecRootContext::onConfigure(size_t configuration_size) {
   rules_ = new RulesSet();
   logHeapSample("modsec_init");
 
-  // Phrase lists live in the embedded catalog and are served to PmFromFile via
-  // modsecurity_proxy_wasm_resolve_data_file (Envoy V8 has no writable MEMFS).
-  if (!modsecurity_proxy_wasm_mount_crs_data_files()) {
-    logJson(true, "configure_failed",
-            "\"error\":\"CRS .data catalog missing — @pmFromFile rules will not load\"");
-    return false;
+  // Phrase lists: install runtime data_files (path-b primary path). Optional
+  // @crs-data catalog still consulted by resolve_data_file on full builds.
+  // Envoy V8 has no writable MEMFS for fopen.
+  {
+    std::unordered_map<std::string, std::string> runtime_files;
+    std::string df_err;
+    if (!parseDataFiles(config, runtime_files, df_err)) {
+      std::ostringstream fields;
+      fields << "\"error\":\"" << jsonEscape(df_err) << "\"";
+      logJson(true, "configure_failed", fields.str());
+      return false;
+    }
+    modsecurity_proxy_wasm_set_runtime_data_files(runtime_files);
+    if (!runtime_files.empty()) {
+      std::ostringstream fields;
+      fields << "\"runtime_data_files\":" << runtime_files.size()
+             << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(wasmHeapBytes());
+      logJson(false, "runtime_data_files_ready", fields.str());
+    }
   }
+  // No longer fail-closed when the build omits @crs-data (path-b default).
+  (void)modsecurity_proxy_wasm_mount_crs_data_files();
   {
     std::ostringstream fields;
-    fields << "\"source\":\"catalog\""
+    fields << "\"source\":\"runtime_or_catalog\""
            << ",\"wasm_heap_bytes\":" << static_cast<unsigned long long>(wasmHeapBytes());
     logJson(false, "crs_data_ready", fields.str());
   }
@@ -829,11 +845,18 @@ int ModSecContext::processIntervention(const char* phase) {
 void ModSecContext::sendBlockLocalResponse(int status) {
   if (status < 100 || status > 599) status = 403;
   const auto& block = rootContext()->plugin_options_.block;
-  std::string details = block.message.empty() ? "blocked by kubeWAF" : block.message;
+  // Client-visible details stay product-neutral (no vendor/product names).
+  std::string details = block.message.empty() ? "Forbidden" : block.message;
   std::vector<std::pair<std::string, std::string>> extra_headers;
-  extra_headers.emplace_back("x-kubewaf-blocked", "1");
+  // Generic marker only; empty blocked_header omits it entirely.
+  if (!block.blocked_header.empty()) {
+    extra_headers.emplace_back(block.blocked_header, "1");
+  }
   if (block.add_rule_id_header && last_disruptive_rule_id_ > 0 && !block.rule_id_header.empty()) {
     extra_headers.emplace_back(block.rule_id_header, std::to_string(last_disruptive_rule_id_));
+  }
+  if (block.add_request_id_header && !request_id_.empty() && !block.request_id_header.empty()) {
+    extra_headers.emplace_back(block.request_id_header, request_id_);
   }
   sendLocalResponse(static_cast<uint32_t>(status), details, "", extra_headers);
 }
@@ -931,7 +954,8 @@ void ModSecContext::runLoggingPhaseIfNeeded() {
 }
 
 FilterDataStatus ModSecContext::sanitizeInterruptedResponseBody(size_t body_buffer_length) {
-  static const char kBlocked[] = "blocked by modsecurity\n";
+  // Product-neutral body replacement when a response-phase interrupt is sanitized.
+  static const char kBlocked[] = "Forbidden\n";
   const std::string blocked(kBlocked);
   if (!response_body_interrupted_) {
     rootContext()->metrics_.countResponseBodySanitized();

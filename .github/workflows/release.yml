@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -26,7 +26,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push OCI image (build/docker/Dockerfile)
+      - name: Build and push OCI images (path-b default + full second-class)
         env:
           IMAGE: ghcr.io/${{ github.repository }}
           TAG: ${{ github.ref_name }}
@@ -35,34 +35,65 @@ jobs:
           # have both, so pin docker for build/push/extract consistency.
           CTR: docker
         run: |
+          set -euo pipefail
           VERSION="${TAG#v}"
-          echo "Building ${IMAGE}:${TAG} from ${DOCKERFILE} (release stage)"
-          make image IMAGE="${IMAGE}:${TAG}" VERSION="${VERSION}"
+          # First-class: path-b (no embedded CRS rule confs). Tags match historical
+          # :vX.Y.Z / :X.Y.Z so existing pins keep getting the tested default.
+          echo "Building ${IMAGE}:${TAG} CATALOG_MODE=path-b"
+          make image IMAGE="${IMAGE}:${TAG}" VERSION="${VERSION}" CATALOG_MODE=path-b
           docker push "${IMAGE}:${TAG}"
           docker tag "${IMAGE}:${TAG}" "${IMAGE}:${VERSION}"
           docker push "${IMAGE}:${VERSION}"
-          echo "Pushed ${IMAGE}:${TAG} and ${IMAGE}:${VERSION}"
+          docker tag "${IMAGE}:${TAG}" "${IMAGE}:${TAG}-path-b"
+          docker push "${IMAGE}:${TAG}-path-b"
+          docker tag "${IMAGE}:${TAG}" "${IMAGE}:${VERSION}-path-b"
+          docker push "${IMAGE}:${VERSION}-path-b"
+          echo "Pushed path-b: ${IMAGE}:{${TAG},${VERSION},${TAG}-path-b,${VERSION}-path-b}"
 
-      - name: Extract modsecurity-proxy-wasm.wasm
+          # Second-class: full catalog for Path A (crsEnable / Include @owasp_crs).
+          # Not CI e2e-gated in the operator monorepo; use when you need embedded CRS.
+          echo "Building ${IMAGE}:${TAG}-full CATALOG_MODE=full"
+          make image IMAGE="${IMAGE}:${TAG}-full" VERSION="${VERSION}" CATALOG_MODE=full
+          docker push "${IMAGE}:${TAG}-full"
+          docker tag "${IMAGE}:${TAG}-full" "${IMAGE}:${VERSION}-full"
+          docker push "${IMAGE}:${VERSION}-full"
+          echo "Pushed full: ${IMAGE}:{${TAG}-full,${VERSION}-full}"
+
+      - name: Extract path-b and full wasm binaries
         env:
-          IMAGE: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          IMAGE: ghcr.io/${{ github.repository }}
+          TAG: ${{ github.ref_name }}
           CTR: docker
         run: |
-          make extract-wasm IMAGE="${IMAGE}"
+          set -euo pipefail
+          make extract-wasm IMAGE="${IMAGE}:${TAG}"
           sha256sum dist/modsecurity-proxy-wasm.wasm | awk '{print $1}' > dist/modsecurity-proxy-wasm.wasm.sha256
-          echo "modsecurity-proxy-wasm.wasm sha256: $(cat dist/modsecurity-proxy-wasm.wasm.sha256)"
+          echo "path-b wasm sha256: $(cat dist/modsecurity-proxy-wasm.wasm.sha256)"
+          # Extract full catalog into a distinct filename for the GitHub release.
+          CTR=docker ./build/scripts/extract-wasm-from-image.sh "${IMAGE}:${TAG}-full" dist/full-tmp
+          mv dist/full-tmp/modsecurity-proxy-wasm.wasm dist/modsecurity-proxy-wasm-full.wasm
+          rm -rf dist/full-tmp
+          sha256sum dist/modsecurity-proxy-wasm-full.wasm | awk '{print $1}' > dist/modsecurity-proxy-wasm-full.wasm.sha256
+          echo "full wasm sha256: $(cat dist/modsecurity-proxy-wasm-full.wasm.sha256)"
+          ls -la dist/*.wasm dist/*.sha256
 
       - name: Upload modsecurity-proxy-wasm.wasm artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: modsecurity-proxy-wasm
-          path: dist/
+          path: |
+            dist/modsecurity-proxy-wasm.wasm
+            dist/modsecurity-proxy-wasm.wasm.sha256
+            dist/modsecurity-proxy-wasm-full.wasm
+            dist/modsecurity-proxy-wasm-full.wasm.sha256
+            dist/waf-config.default.json
+            dist/envoy.example.yaml
           retention-days: 7
           if-no-files-found: error
 
   publish:
     needs: build
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -143,4 +174,6 @@ jobs:
           files: |
             dist/modsecurity-proxy-wasm.wasm
             dist/modsecurity-proxy-wasm.wasm.sha256
+            dist/modsecurity-proxy-wasm-full.wasm
+            dist/modsecurity-proxy-wasm-full.wasm.sha256
             test/perf/release-charts/*.png

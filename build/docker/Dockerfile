@@ -27,11 +27,15 @@ COPY . /build/
 
 ARG CRS_VERSION=v4.27.0
 ARG VERSION=0.1.0-alpha8
+# path-b (default): helpers + @crs-data only. full: also embed CRS rule confs (Path A).
+ARG CATALOG_MODE=path-b
 ENV CRS_VERSION=${CRS_VERSION}
 ENV VERSION=${VERSION}
+ENV CATALOG_MODE=${CATALOG_MODE}
 
 RUN make all PREFIX=/opt \
 	VERSION=${VERSION} \
+	CATALOG_MODE=${CATALOG_MODE} \
 	MODSECURITY_PROXY_WASM_OUT=/modsecurity-proxy-wasm.wasm \
 	MODSECURITY_PROXY_WAT_OUT=/modsecurity-proxy-wasm.wat
 
@@ -40,14 +44,16 @@ FROM scratch AS release
 
 ARG CRS_VERSION=v4.27.0
 ARG VERSION=0.1.0-alpha8
+ARG CATALOG_MODE=path-b
 
 LABEL org.opencontainers.image.title="modsecurity-proxy-wasm" \
-      org.opencontainers.image.description="ModSecurity proxy-wasm module with embedded OWASP CRS for Envoy envoy.wasm.runtime.v8" \
+      org.opencontainers.image.description="ModSecurity proxy-wasm module for Envoy envoy.wasm.runtime.v8 (catalog_mode=${CATALOG_MODE})" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.vendor="modsecurity-proxy-wasm" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.source="https://github.com/owasp-modsecurity/modsecurity-proxy-wasm" \
       modsecurity.proxy_wasm.runtime="envoy.wasm.runtime.v8" \
+      modsecurity.proxy_wasm.catalog_mode="${CATALOG_MODE}" \
       owasp.crs.ref="${CRS_VERSION}"
 
 COPY --from=builder /modsecurity-proxy-wasm.wasm /usr/share/modsecurity-proxy-wasm/modsecurity-proxy-wasm.wasm
