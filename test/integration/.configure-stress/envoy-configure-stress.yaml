@@ -59,6 +59,10 @@ static_resources:
                         "compressed_bytes": 1302,
                         "score_rules": 120
                       },
+                      "data_files": {
+                        "scanners-user-agents.data": "c3RyZXNzLXNjYW5uZXItYm90Cmt1YmV3YWYtY29uZmlndXJlLXN0cmVzcwo="
+                      },
+                      "data_files_encoding": "base64",
                       "metric_labels": {
                         "owner": "modsecurity-proxy-wasm",
                         "identifier": "configure-stress"

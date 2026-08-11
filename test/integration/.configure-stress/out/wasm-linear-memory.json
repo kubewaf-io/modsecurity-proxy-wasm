@@ -1,6 +1,6 @@
 {
-  "initial_memory_pages": 512,
+  "initial_memory_pages": 256,
   "maximum_memory_pages": 8192,
-  "initial_memory_bytes": 33554432,
+  "initial_memory_bytes": 16777216,
   "maximum_memory_bytes": 536870912
 }
