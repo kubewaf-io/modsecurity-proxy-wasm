@@ -1,7 +1,7 @@
 services:
   albedo:
     # renovate: datasource=docker depName=ghcr.io/coreruleset/albedo
-    image: ghcr.io/coreruleset/albedo:0.3.0
+    image: ghcr.io/coreruleset/albedo:0.3.0@sha256:843ed01d28f48b594dcc0278ea9403175a0bf40ec065432040b796f589e89507
     command: ["--json"]
 
   chown:
