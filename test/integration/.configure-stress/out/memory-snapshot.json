@@ -1,42 +1,43 @@
 {
   "envoy_before": {
-    "allocated_bytes": 28200408,
-    "heap_size_bytes": 182452224,
-    "physical_size_bytes": 185527102
+    "allocated_bytes": 29957944,
+    "heap_size_bytes": 125829120,
+    "physical_size_bytes": 116321086
   },
   "envoy_after": {
-    "allocated_bytes": 28200408,
-    "heap_size_bytes": 182452224,
-    "physical_size_bytes": 185527102
+    "allocated_bytes": 29957944,
+    "heap_size_bytes": 125829120,
+    "physical_size_bytes": 116321086
   },
   "modsecurity_before": {
-    "wasm_heap_bytes": 33554432
+    "wasm_heap_bytes": 16777216
   },
   "modsecurity_after": {
-    "wasm_heap_bytes": 33554432
+    "wasm_heap_bytes": 16777216
   },
-  "wasm_heap_after_configure": 33554432,
-  "wasm_heap_after_k6": 33554432,
+  "wasm_heap_after_configure": 16777216,
+  "wasm_heap_after_k6": 16777216,
   "wasm_linear_memory": {
-    "initial_memory_pages": 512,
+    "initial_memory_pages": 256,
     "maximum_memory_pages": 8192,
-    "initial_memory_bytes": 33554432,
+    "initial_memory_bytes": 16777216,
     "maximum_memory_bytes": 536870912,
     "source": "/data/engines/modsecurity-proxy-wasm/dist/modsecurity-proxy-wasm.wasm"
   },
   "configure_heap_ladder": {
-    "peak_wasm_heap_bytes": 33554432,
+    "peak_wasm_heap_bytes": 16777216,
     "stages": {
-      "configure_start": 33554432,
-      "config_read": 33554432,
-      "modsec_init": 33554432,
-      "crs_data_ready": 33554432,
-      "after_crs_data": 33554432,
-      "rules_loading": 33554432,
-      "rules_loaded": 33554432,
-      "rules_applied": 33554432,
-      "config_freed": 33554432,
-      "config_applied": 33554432
+      "configure_start": 16777216,
+      "config_read": 16777216,
+      "modsec_init": 16777216,
+      "runtime_data_files_ready": 16777216,
+      "crs_data_ready": 16777216,
+      "after_crs_data": 16777216,
+      "rules_loading": 16777216,
+      "rules_loaded": 16777216,
+      "rules_applied": 16777216,
+      "config_freed": 16777216,
+      "config_applied": 16777216
     },
     "source": "/data/engines/modsecurity-proxy-wasm/test/integration/.configure-stress/out/configure-stress-envoy.log"
   },
@@ -45,7 +46,7 @@
     "container_limit_bytes": null
   },
   "container_after": {
-    "container_rss_bytes": 213909504,
-    "container_limit_bytes": 4102767509
+    "container_rss_bytes": 217998950,
+    "container_limit_bytes": 8326867845
   }
 }

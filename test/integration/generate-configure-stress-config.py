@@ -16,12 +16,16 @@ import sys
 from pathlib import Path
 
 
+# Tiny phrase list for @pmFromFile (path-b no longer embeds @crs-data).
+STRESS_PHRASE_BODY = "stress-scanner-bot\nkubewaf-configure-stress\n"
+
+
 def build_directives(n_score_rules: int) -> list[str]:
     lines: list[str] = [
         "Include @kubewaf-defaults",
         "SecRuleEngine On",
         "SecDebugLogLevel 0",
-        # Isolated phrase-file operator (loads catalog .data automata alone).
+        # Isolated phrase-file operator; body supplied via data_files below.
         (
             'SecRule REQUEST_HEADERS:User-Agent '
             '"@pmFromFile scanners-user-agents.data" '
@@ -81,10 +85,15 @@ def main() -> int:
     args = ap.parse_args()
 
     directives = build_directives(args.score_rules)
+    # path-b catalog has no @crs-data; inject phrase body like the operator does.
+    phrase_b64 = base64.b64encode(STRESS_PHRASE_BODY.encode("utf-8")).decode("ascii")
+    data_files = {"scanners-user-agents.data": phrase_b64}
     if args.plain:
         plugin = {
             "directives_map": {"default": directives},
             "default_directives": "default",
+            "data_files": data_files,
+            "data_files_encoding": "base64",
             "metric_labels": {
                 "owner": "modsecurity-proxy-wasm",
                 "identifier": "configure-stress",
@@ -109,6 +118,8 @@ def main() -> int:
                 "compressed_bytes": len(compressed),
                 "score_rules": args.score_rules,
             },
+            "data_files": data_files,
+            "data_files_encoding": "base64",
             "metric_labels": {
                 "owner": "modsecurity-proxy-wasm",
                 "identifier": "configure-stress",

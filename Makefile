@@ -34,9 +34,9 @@ YAJL_VERSION ?= 2.1.0
 YAJL_SHA ?= a0ecdde0c042b9256170f2f8890dd9451a4240aa
 
 # renovate: datasource=github-tags depName=GNOME/libxml2 versioning=semver
-LIBXML2_VERSION ?= v2.13.9
+LIBXML2_VERSION ?= v2.15.3
 # renovate: datasource=github-tags depName=GNOME/libxml2 versioning=semver digest
-LIBXML2_SHA ?= 04af2cabb9f859c198b8a553c028a87481199410
+LIBXML2_SHA ?= c94eb0210183b9d7cb43f8e7fddc6be55843ef49
 
 # renovate: datasource=github-tags depName=coreruleset/coreruleset versioning=semver
 CRS_VERSION ?= v4.28.0
@@ -75,8 +75,14 @@ help:
 	@echo "  make inspect-wasm                 # defaults to WASM=dist/modsecurity-proxy-wasm.wasm"
 	@echo "  make inspect-wasm WASM=path.wasm  # any finished binary"
 	@echo ""
+	@echo "Catalog modes (CATALOG_MODE=path-b|full, default path-b):"
+	@echo "  path-b  first-class: helpers + @crs-data only (structured SecRules at runtime)"
+	@echo "  full    second-class: also embed @crs-setup-conf + @owasp_crs for Path A"
+	@echo "  make modsecurity-proxy-wasm.wasm CATALOG_MODE=full"
+	@echo "  make image-full     OCI image with CATALOG_MODE=full (tag IMAGE-full if unset)"
+	@echo ""
 	@echo "Container images:"
-	@echo "  make image          Build wasm + OCI artifact (build/docker/Dockerfile)"
+	@echo "  make image          Build wasm + OCI artifact (build/docker/Dockerfile, path-b)"
 	@echo "  make image-builder  Builder stage only"
 	@echo "  make image-oci      OCI image from dist/modsecurity-proxy-wasm.wasm"
 	@echo "  make extract-wasm   Copy wasm from IMAGE into dist/"
@@ -111,9 +117,17 @@ inspect-wasm: ## Analyze a finished .wasm for version / source / capabilities
 
 # --- OCI / Podman / Docker ---
 
+# BUILD_ARGS may include --build-arg CATALOG_MODE=... (default path-b via Dockerfile ARG).
 image:
 	@test -n "$(CTR)" || (echo "ERROR: install podman or docker" >&2; exit 1)
-	$(CTR) build $(BUILD_ARGS) -f $(DOCKERFILE) -t $(IMAGE) .
+	$(CTR) build $(BUILD_ARGS) \
+		--build-arg CATALOG_MODE=$(or $(CATALOG_MODE),path-b) \
+		-f $(DOCKERFILE) -t $(IMAGE) .
+
+# Second-class Path A image: embedded CRS rule confs. Prefer tagging as *:*-full.
+image-full:
+	@test -n "$(CTR)" || (echo "ERROR: install podman or docker" >&2; exit 1)
+	$(MAKE) image CATALOG_MODE=full IMAGE=$(or $(IMAGE_FULL),$(IMAGE)-full)
 
 image-builder:
 	@test -n "$(CTR)" || (echo "ERROR: install podman or docker" >&2; exit 1)
