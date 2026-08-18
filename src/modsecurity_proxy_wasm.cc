@@ -233,6 +233,7 @@ public:
   FilterHeadersStatus onResponseHeaders(uint32_t headers, bool end_of_stream) override;
   FilterDataStatus onResponseBody(size_t body_buffer_length, bool end_of_stream) override;
   FilterTrailersStatus onResponseTrailers(uint32_t trailers) override;
+  void onLog() override;
   void onDelete() override;
 
   Transaction* transaction_{nullptr};
@@ -254,6 +255,19 @@ private:
   std::string client_ip_;
   // Bare version token for ModSecurity (e.g. "1.1", "2.0"); derived from Envoy request.protocol.
   std::string http_version_token_{"1.1"};
+  std::string action_{"pass"};
+  std::string last_phase_;
+  bool export_annotated_{false};
+  struct ExportMatch {
+    std::string event;
+    int64_t rule_id{0};
+    std::string phase;
+    int severity{-1};
+    bool disruptive{false};
+    std::string msg;
+    std::string data;
+  };
+  std::vector<ExportMatch> export_matches_;
   ModSecRootContext* rootContext() { return static_cast<ModSecRootContext*>(root()); }
 
   void activateContext();
@@ -275,6 +289,10 @@ private:
                           int severity, bool disruptive, const std::string& msg,
                           const std::string& tags_csv, const std::string& data = "",
                           const std::string& match = "");
+  void stashExportMatch(const char* event, int64_t rule_id, const char* phase, int severity,
+                        bool disruptive, const std::string& msg, const std::string& data);
+  void maybeAnnotateExport();
+  static bool sampleAt(double rate, const std::string& seed);
 };
 
 static RegisterContextFactory register_ModSecContext(CONTEXT_FACTORY(ModSecContext),
@@ -289,6 +307,23 @@ static thread_local ModSecContext* g_active_modsec_context = nullptr;
 // go-ftw match_regex tests (CRS 922130). Keep lines compact — Envoy truncates
 // wasm log lines (~512 chars with prefix).
 // ---------------------------------------------------------------------------
+
+static const char* catalogPhaseName(int rule_phase) {
+  switch (rule_phase) {
+    case 0:
+      return modsecurity_proxy_wasm_metric_phase::kRequestHeaders;
+    case 1:
+      return modsecurity_proxy_wasm_metric_phase::kRequestBody;
+    case 2:
+      return modsecurity_proxy_wasm_metric_phase::kResponseHeaders;
+    case 3:
+      return modsecurity_proxy_wasm_metric_phase::kResponseBody;
+    case 4:
+      return modsecurity_proxy_wasm_metric_phase::kLogging;
+    default:
+      return "unknown";
+  }
+}
 
 static std::string jsonEscape(std::string_view s) {
   std::string out;
@@ -652,6 +687,10 @@ void ModSecContext::onCreate() {
   path_.clear();
   client_ip_.clear();
   http_version_token_ = "1.1";
+  action_ = "pass";
+  last_phase_.clear();
+  export_annotated_ = false;
+  export_matches_.clear();
 }
 
 void ModSecContext::activateContext() {
@@ -733,6 +772,113 @@ void ModSecContext::logStructuredEvent(const char* event, int64_t rule_id, int p
   LOG_WARN(line);
 }
 
+void ModSecContext::stashExportMatch(const char* event, int64_t rule_id, const char* phase,
+                                     int severity, bool disruptive, const std::string& msg,
+                                     const std::string& data) {
+  ExportMatch m;
+  m.event = event ? event : "";
+  m.rule_id = rule_id;
+  if (phase != nullptr) {
+    m.phase = phase;
+    last_phase_ = phase;
+  }
+  m.severity = severity;
+  m.disruptive = disruptive;
+  m.msg = msg.substr(0, 256);
+  m.data = data.substr(0, 180);
+  constexpr size_t kCap = 16;
+  if (export_matches_.size() < kCap) {
+    export_matches_.push_back(std::move(m));
+    return;
+  }
+  // Keep first 16; always retain the interrupting rule.
+  if (disruptive && last_disruptive_rule_id_ == rule_id) {
+    export_matches_.back() = std::move(m);
+  }
+}
+
+bool ModSecContext::sampleAt(double rate, const std::string& seed) {
+  return wafTelemetrySampleAt(rate, seed);
+}
+
+void ModSecContext::maybeAnnotateExport() {
+  auto* root = rootContext();
+  const auto& tel = root->plugin_options_.telemetry;
+  if (tel.mode != "Managed" || !tel.traces_enabled) {
+    return;
+  }
+  const bool has_match = !export_matches_.empty() || interrupted_;
+  if (!has_match) {
+    return;
+  }
+  // Hash the stream id, not a client-controlled request header.
+  const std::string seed = std::to_string(id());
+  if (interrupted_) {
+    if (!sampleAt(tel.sample_disruptive, seed)) {
+      return;
+    }
+  } else if (!sampleAt(tel.sample_rate, seed)) {
+    return;
+  }
+
+  std::ostringstream js;
+  js << "{\"interrupted\":" << (interrupted_ ? "true" : "false")
+     << ",\"action\":\"" << jsonEscape(action_) << "\"";
+  if (!last_phase_.empty()) {
+    js << ",\"phase\":\"" << jsonEscape(last_phase_) << "\"";
+  }
+  if (!root->plugin_options_.config_id.empty()) {
+    js << ",\"config_id\":\"" << jsonEscape(root->plugin_options_.config_id) << "\"";
+  }
+  for (const auto& kv : root->plugin_options_.metrics.labels) {
+    if (kv.first == "waf_namespace" || kv.first == "waf_name" || kv.first == "engine") {
+      js << ",\"" << jsonEscape(kv.first) << "\":\"" << jsonEscape(kv.second) << "\"";
+    }
+  }
+  if (!tel.redact && !client_ip_.empty()) {
+    js << ",\"client.address\":\"" << jsonEscape(client_ip_) << "\"";
+  }
+  js << ",\"matches\":[";
+  bool first = true;
+  for (const auto& m : export_matches_) {
+    if (!first) {
+      js << ",";
+    }
+    first = false;
+    const char* ev = m.event == "tx_interrupt" ? "waf.tx_interrupt" : "waf.rule_match";
+    js << "{\"event\":\"" << ev << "\"";
+    if (m.rule_id > 0) {
+      js << ",\"rule_id\":" << m.rule_id;
+    }
+    if (!m.phase.empty()) {
+      js << ",\"phase\":\"" << jsonEscape(m.phase) << "\"";
+    }
+    if (m.severity >= 0) {
+      js << ",\"severity\":" << m.severity;
+    }
+    js << ",\"disruptive\":" << (m.disruptive ? "true" : "false");
+    if (!m.msg.empty()) {
+      js << ",\"msg\":\"" << jsonEscape(m.msg) << "\"";
+    }
+    if (tel.include_match_data && !m.data.empty() && !wafTelemetryLooksSecret(m.data)) {
+      js << ",\"data\":\"" << jsonEscape(m.data) << "\"";
+    }
+    js << "}";
+  }
+  js << "]}";
+
+  const std::string rollup = js.str();
+  // Envoy Context::setProperty stores CelState under "wasm." + path.
+  // Access-log %FILTER_STATE(wasm.kubewaf.event:PLAIN)% and the CEL
+  // filter on filter_state['wasm.kubewaf.export'] need these keys.
+  // (Envoy 1.38 does not map proxy_set_property onto dynamic metadata.)
+  const WasmResult st = setFilterState("kubewaf.event", rollup);
+  const WasmResult md_st = setFilterState("kubewaf.export", "1");
+  if (st == WasmResult::Ok || md_st == WasmResult::Ok) {
+    export_annotated_ = true;
+  }
+}
+
 void ModSecContext::logRequestBodyProcessorErrors() {
   if (!transaction_) {
     return;
@@ -777,6 +923,9 @@ void ModSecContext::recordRuleMatch(const RuleMessage& rule_message) {
   logStructuredEvent("rule_match", rule_message.m_rule.m_ruleId, rule_message.getPhase(), nullptr,
                      rule_message.m_severity, rule_message.m_isDisruptive, rule_message.m_message,
                      tags_csv, rule_message.m_data, rule_message.m_match);
+  stashExportMatch("rule_match", rule_message.m_rule.m_ruleId,
+                   catalogPhaseName(rule_message.getPhase()), rule_message.m_severity,
+                   rule_message.m_isDisruptive, rule_message.m_message, rule_message.m_data);
 }
 
 void ModSecContext::flushNewRuleMessages() {
@@ -825,13 +974,21 @@ int ModSecContext::processIntervention(const char* phase) {
 
   int status = intervention.status;
   std::string intervention_msg;
+  std::string redirect_url;
   if (intervention.log != nullptr) {
     intervention_msg = intervention.log;
     free(intervention.log);
   }
   if (intervention.url != nullptr) {
+    redirect_url = intervention.url;
     free(intervention.url);
   }
+  action_ = wafTelemetryAction(true, !redirect_url.empty(), status, intervention_msg);
+  last_phase_ = phase ? phase : last_phase_;
+  stashExportMatch("tx_interrupt", last_disruptive_rule_id_, phase, -1, true, intervention_msg, "");
+  // Annotate as soon as the interrupt is decided so the access-log metadata
+  // filter can see kubewaf.export even if onLog is delayed.
+  maybeAnnotateExport();
 
   const auto& block = rootContext()->plugin_options_.block;
   if (block.status >= 100 && block.status <= 599) {
@@ -1321,6 +1478,15 @@ FilterDataStatus ModSecContext::onResponseBody(size_t body_buffer_length, bool e
   return FilterDataStatus::Continue;
 }
 
+void ModSecContext::onLog() {
+  // Access logger runs after the stream finishes; commit export metadata here.
+  if (transaction_ != nullptr) {
+    activateContext();
+    runLoggingPhaseIfNeeded();
+  }
+  maybeAnnotateExport();
+}
+
 void ModSecContext::onDelete() {
   // Fallback: if response path skipped finalize (client cancel, etc.), still run phase 5.
   if (transaction_ != nullptr) {
@@ -1336,6 +1502,7 @@ void ModSecContext::onDelete() {
       processIntervention(modsecurity_proxy_wasm_metric_phase::kResponseBody);
     }
     runLoggingPhaseIfNeeded();
+    maybeAnnotateExport();
   }
   if (transaction_ != nullptr && !interrupted_) {
     rootContext()->metrics_.countTxAllowed();

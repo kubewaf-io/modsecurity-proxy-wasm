@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 #include "metrics.h"
@@ -46,10 +47,21 @@ struct WafBlockOptions {
   std::string request_id_header{"x-request-id"};
 };
 
+// Managed-observability policy (ECDS only). Destination is Envoy cluster config.
+struct WafTelemetryOptions {
+  std::string mode;  // None | Managed; default None
+  bool traces_enabled{false};
+  double sample_rate{0.25};
+  double sample_disruptive{1.0};
+  bool redact{true};
+  bool include_match_data{false};
+};
+
 // Full plugin configuration parsed from Envoy Wasm plugin config JSON.
 struct WafPluginOptions {
   WafMetricOptions metrics;
   WafBlockOptions block;
+  WafTelemetryOptions telemetry;
   // "kubewaf" when driven by the kubeWAF operator; empty for standalone demos.
   std::string mode;
   // Stable id, e.g. "kubewaf/shop/shop-waf" (ECDS resource name).
@@ -65,6 +77,16 @@ bool parseWafMetricOptions(const std::string& config, WafMetricOptions& out);
 
 // Parse full plugin options (metrics, block, mode, config_id, allow_fallback).
 bool parseWafPluginOptions(const std::string& config, WafPluginOptions& out);
+
+// Sample using a host-owned seed (stream id), not a client header.
+bool wafTelemetrySampleAt(double rate, std::string_view seed);
+
+// Map interrupt fields to catalog action.
+const char* wafTelemetryAction(bool interrupted, bool has_redirect_url, int status,
+                               std::string_view intervention_log);
+
+// True when MATCHED_VAR-like payload looks like a secret header/cookie.
+bool wafTelemetryLooksSecret(std::string_view data);
 
 // Parse plugin JSON data_files into basename → plain body map.
 // Supports data_files_encoding: "base64" (default) or "gzip+base64".

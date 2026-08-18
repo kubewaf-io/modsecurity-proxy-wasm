@@ -7,6 +7,26 @@
 
 #include "proxy_wasm_intrinsics.h"
 
+static bool isReservedIdentityKey(const std::string& k) {
+  return k == "waf_namespace" || k == "waf_name" || k == "engine" || k == "owner";
+}
+
+static bool extraLabelUnsafe(const std::string& k, const std::string& v) {
+  if (k.find('=') != std::string::npos || v.find('=') != std::string::npos) {
+    return true;
+  }
+  const std::string composed = "_" + k + "=" + v;
+  static const char* frags[] = {"_waf_namespace=", "_waf_name=", "_engine=", "_owner=",
+                                "_phase=", "_ruleid=", "_severity=", "_tag="};
+  for (const char* f : frags) {
+    if (composed.find(f) != std::string::npos || k.find(f) != std::string::npos ||
+        v.find(f) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void ModSecMetrics::configure(const WafMetricOptions& options) {
   options_ = options;
   metric_ids_.clear();
@@ -15,6 +35,9 @@ void ModSecMetrics::configure(const WafMetricOptions& options) {
   distinct_tag_metrics_ = 0;
   label_suffix_.clear();
   for (const auto& kv : options_.labels) {
+    if (!isReservedIdentityKey(kv.first) && extraLabelUnsafe(kv.first, kv.second)) {
+      continue;
+    }
     label_suffix_.push_back('_');
     label_suffix_.append(kv.first);
     label_suffix_.push_back('=');
@@ -208,6 +231,10 @@ void ModSecMetrics::countRuleMatch(int rule_phase, int severity, bool disruptive
   }
   incrementCounter(std::string("modsecurity_proxy_wasm.rule.matches_phase=") + phase + "_severity=" +
                    std::to_string(severity) + suffix);
+  if (options_.dual_prefix) {
+    incrementCounter(std::string("kubewaf_waf.rule.matches_phase=") + phase + "_severity=" +
+                     std::to_string(severity) + suffix);
+  }
 
   if (disruptive) {
     incrementCounter(std::string("modsecurity_proxy_wasm.rule.matches_disruptive") + suffix);
@@ -216,6 +243,10 @@ void ModSecMetrics::countRuleMatch(int rule_phase, int severity, bool disruptive
     }
     incrementCounter(std::string("modsecurity_proxy_wasm.rule.matches_disruptive_phase=") + phase +
                      "_severity=" + std::to_string(severity) + suffix);
+    if (options_.dual_prefix) {
+      incrementCounter(std::string("kubewaf_waf.rule.matches_disruptive_phase=") + phase +
+                       "_severity=" + std::to_string(severity) + suffix);
+    }
   }
 
   if (options_.per_rule_id && rule_id > 0) {
@@ -223,6 +254,13 @@ void ModSecMetrics::countRuleMatch(int rule_phase, int severity, bool disruptive
                             std::to_string(rule_id) + "_phase=" + phase + suffix;
     if (trackDistinct(rule_name, distinct_rule_metrics_, kMaxDistinctRuleMetrics)) {
       incrementCounter(rule_name);
+    }
+    if (options_.dual_prefix) {
+      std::string product = std::string("kubewaf_waf.rule.matches_ruleid=") +
+                            std::to_string(rule_id) + "_phase=" + phase + suffix;
+      if (trackDistinct(product, distinct_rule_metrics_, kMaxDistinctRuleMetrics)) {
+        incrementCounter(product);
+      }
     }
   }
 
@@ -240,6 +278,13 @@ void ModSecMetrics::countRuleMatch(int rule_phase, int severity, bool disruptive
       continue;
     }
     incrementCounter(tag_name);
+    if (options_.dual_prefix) {
+      std::string product = std::string("kubewaf_waf.rule.matches_tag=") +
+                            sanitizeTagForMetric(tag) + "_phase=" + phase + suffix;
+      if (trackDistinct(product, distinct_tag_metrics_, kMaxDistinctTagMetrics)) {
+        incrementCounter(product);
+      }
+    }
   }
 }
 

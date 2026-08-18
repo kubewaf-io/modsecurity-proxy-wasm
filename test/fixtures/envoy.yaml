@@ -3,6 +3,8 @@
 stats_config:
   stats_tags:
     # Non-greedy captures: stat names embed phase/severity/tag before metric_labels.
+    - tag_name: tag
+      regex: "(_tag=([0-9a-zA-Z.-]+))"
     - tag_name: phase
       regex: "(_phase=(http_request_headers|http_request_body|http_response_headers|http_response_body|http_logging|unknown))"
     - tag_name: rule_id
@@ -13,8 +15,12 @@ stats_config:
       regex: "(_identifier=([0-9a-z.:_-]+))"
     - tag_name: severity
       regex: "(_severity=([0-9]+))"
-    - tag_name: tag
-      regex: "(_tag=([0-9a-zA-Z.-]+?))_phase="
+    - tag_name: waf_namespace
+      regex: "(_waf_namespace=([0-9A-Za-z.-]+))"
+    - tag_name: waf_name
+      regex: "(_waf_name=([0-9A-Za-z.-]+))"
+    - tag_name: engine
+      regex: "(_engine=([0-9A-Za-z.-]+))"
 # Run with: docker run --rm -v $(pwd)/dist/modsecurity-proxy-wasm.wasm:/etc/modsecurity-proxy-wasm.wasm:ro \
 #   -v $(pwd)/test/fixtures/envoy.yaml:/etc/envoy.yaml:ro -p 8080:8080 \
 #   envoyproxy/envoy:v1.38-latest

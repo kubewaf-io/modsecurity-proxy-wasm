@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <zlib.h>
@@ -239,6 +242,39 @@ bool extractJsonIntValue(const std::string& json, const std::string& key, int de
   } catch (...) {
     return default_value;
   }
+}
+
+std::string extractJsonStringValue(const std::string& json, const std::string& key);
+
+double extractJsonNumberValue(const std::string& json, const std::string& key, double default_value) {
+  // Operator emits decimal strings ("0.25"); also accept a bare JSON number.
+  std::string as_str = extractJsonStringValue(json, key);
+  if (!as_str.empty()) {
+    char* end = nullptr;
+    double v = std::strtod(as_str.c_str(), &end);
+    if (end != as_str.c_str()) {
+      return v;
+    }
+  }
+  const std::string needle = "\"" + key + "\"";
+  size_t pos = json.find(needle);
+  if (pos == std::string::npos) {
+    return default_value;
+  }
+  pos = json.find(':', pos + needle.size());
+  if (pos == std::string::npos) {
+    return default_value;
+  }
+  const std::string tail = trim(json.substr(pos + 1));
+  if (tail.empty()) {
+    return default_value;
+  }
+  char* end = nullptr;
+  double v = std::strtod(tail.c_str(), &end);
+  if (end == tail.c_str()) {
+    return default_value;
+  }
+  return v;
 }
 
 std::string extractJsonStringValue(const std::string& json, const std::string& key) {
@@ -1022,6 +1058,27 @@ void fillTransformOptions(const std::string& config, WafPluginOptions& out) {
   }
 }
 
+void fillTelemetryOptions(const std::string& config, WafTelemetryOptions& out) {
+  out = WafTelemetryOptions{};
+  if (!looksLikeJson(trim(config))) {
+    return;
+  }
+  std::string tel;
+  if (!extractJsonObjectSlice(config, "telemetry", tel)) {
+    return;
+  }
+  out.mode = extractJsonStringValue(tel, "mode");
+  std::string traces;
+  if (!extractJsonObjectSlice(tel, "traces", traces)) {
+    return;
+  }
+  out.traces_enabled = extractJsonBoolValue(traces, "enabled", false);
+  out.sample_rate = extractJsonNumberValue(traces, "sample_rate", 0.25);
+  out.sample_disruptive = extractJsonNumberValue(traces, "sample_disruptive", 1.0);
+  out.redact = extractJsonBoolValue(traces, "redact", true);
+  out.include_match_data = extractJsonBoolValue(traces, "include_match_data", false);
+}
+
 void fillBlockOptions(const std::string& config, WafBlockOptions& out) {
   out = WafBlockOptions{};
   if (!looksLikeJson(trim(config))) {
@@ -1217,6 +1274,41 @@ bool parseDataFiles(const std::string& config,
   return true;
 }
 
+bool wafTelemetrySampleAt(double rate, std::string_view seed) {
+  if (rate >= 1.0) {
+    return true;
+  }
+  if (rate <= 0.0) {
+    return false;
+  }
+  uint32_t h = 2166136261u;
+  for (unsigned char c : seed) {
+    h ^= c;
+    h *= 16777619u;
+  }
+  return (static_cast<double>(h % 10000) / 10000.0) < rate;
+}
+
+const char* wafTelemetryAction(bool interrupted, bool has_redirect_url, int status,
+                               std::string_view intervention_log) {
+  if (!interrupted) {
+    return "pass";
+  }
+  if (has_redirect_url) {
+    return "redirect";
+  }
+  if (status == 0 || intervention_log.find("drop") != std::string_view::npos) {
+    return "drop";
+  }
+  return "deny";
+}
+
+bool wafTelemetryLooksSecret(std::string_view data) {
+  auto has = [&](const char* n) { return data.find(n) != std::string_view::npos; };
+  return has("Bearer ") || has("bearer ") || has("Authorization") || has("authorization") ||
+         has("Cookie:") || has("cookie:") || has("Set-Cookie") || has("set-cookie");
+}
+
 bool parseWafPluginOptions(const std::string& config, WafPluginOptions& out) {
   out = WafPluginOptions{};
   if (!looksLikeJson(trim(config))) {
@@ -1224,6 +1316,7 @@ bool parseWafPluginOptions(const std::string& config, WafPluginOptions& out) {
   }
   fillMetricOptions(config, out.metrics);
   fillBlockOptions(config, out.block);
+  fillTelemetryOptions(config, out.telemetry);
   fillTransformOptions(config, out);
   out.mode = extractJsonStringValue(config, "mode");
   out.config_id = extractJsonStringValue(config, "config_id");

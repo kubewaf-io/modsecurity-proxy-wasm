@@ -280,6 +280,78 @@ TEST(WafConfig, EmptyBlockedHeaderOmitsMarker) {
   EXPECT_TRUE(opts.block.blocked_header.empty());
 }
 
+TEST(WafConfig, ParseTelemetryPolicyNoOtelClient) {
+  const std::string cfg = R"({
+    "mode": "kubewaf",
+    "telemetry": {
+      "mode": "Managed",
+      "traces": {
+        "enabled": true,
+        "sample_rate": "0.25",
+        "sample_disruptive": "1.0",
+        "redact": true,
+        "include_match_data": false
+      }
+    },
+    "directives_map": {"default": ["SecRuleEngine On"]},
+    "default_directives": "default"
+  })";
+  WafPluginOptions opts;
+  ASSERT_TRUE(parseWafPluginOptions(cfg, opts));
+  EXPECT_EQ(opts.telemetry.mode, "Managed");
+  EXPECT_TRUE(opts.telemetry.traces_enabled);
+  EXPECT_DOUBLE_EQ(opts.telemetry.sample_rate, 0.25);
+  EXPECT_DOUBLE_EQ(opts.telemetry.sample_disruptive, 1.0);
+  EXPECT_TRUE(opts.telemetry.redact);
+  EXPECT_FALSE(opts.telemetry.include_match_data);
+}
+
+TEST(WafConfig, TelemetrySampleAndActionHelpers) {
+  EXPECT_TRUE(wafTelemetrySampleAt(1.0, "1"));
+  EXPECT_FALSE(wafTelemetrySampleAt(0.0, "1"));
+  EXPECT_STREQ(wafTelemetryAction(false, false, 200, ""), "pass");
+  EXPECT_STREQ(wafTelemetryAction(true, true, 302, ""), "redirect");
+  EXPECT_STREQ(wafTelemetryAction(true, false, 0, ""), "drop");
+  EXPECT_STREQ(wafTelemetryAction(true, false, 403, "drop connection"), "drop");
+  EXPECT_STREQ(wafTelemetryAction(true, false, 403, "denied"), "deny");
+  EXPECT_TRUE(wafTelemetryLooksSecret("Authorization: Bearer abc"));
+  EXPECT_FALSE(wafTelemetryLooksSecret("union select"));
+}
+
+TEST(WafConfig, ParseTelemetryUnquotedRate) {
+  const std::string cfg = R"({
+    "telemetry": {"mode": "Managed", "traces": {"enabled": true, "sample_rate": 0.25}},
+    "directives_map": {"default": ["SecRuleEngine On"]},
+    "default_directives": "default"
+  })";
+  WafPluginOptions opts;
+  ASSERT_TRUE(parseWafPluginOptions(cfg, opts));
+  EXPECT_DOUBLE_EQ(opts.telemetry.sample_rate, 0.25);
+}
+
+TEST(WafConfig, ParseTelemetryNoneOmitsTracesUse) {
+  const std::string cfg = R"({
+    "telemetry": {"mode": "None"},
+    "directives_map": {"default": ["SecRuleEngine On"]},
+    "default_directives": "default"
+  })";
+  WafPluginOptions opts;
+  ASSERT_TRUE(parseWafPluginOptions(cfg, opts));
+  EXPECT_EQ(opts.telemetry.mode, "None");
+  EXPECT_FALSE(opts.telemetry.traces_enabled);
+}
+
+TEST(WafConfig, ParseTelemetryAbsentDefaultsNone) {
+  const std::string cfg = R"({
+    "directives_map": {"default": ["SecRuleEngine On"]},
+    "default_directives": "default"
+  })";
+  WafPluginOptions opts;
+  ASSERT_TRUE(parseWafPluginOptions(cfg, opts));
+  EXPECT_TRUE(opts.telemetry.mode.empty());
+  EXPECT_FALSE(opts.telemetry.traces_enabled);
+}
+
 TEST(WafConfig, KubeWafCanDisableDualPrefix) {
   const std::string cfg = R"({
     "mode": "kubewaf",
