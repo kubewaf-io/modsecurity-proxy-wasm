@@ -45,7 +45,7 @@ CRS_VERSION ?= v4.28.0
 GO_FTW_VERSION ?= 2.5.0
 
 # renovate: datasource=docker depName=envoyproxy/envoy versioning=loose
-ENVOY_IMAGE ?= envoyproxy/envoy:v1.39.0
+ENVOY_IMAGE ?= envoyproxy/envoy:v1.39.1
 
 BUILD_ARGS := $(if $(CRS_VERSION),--build-arg CRS_VERSION=$(CRS_VERSION),) \
               $(if $(VERSION),--build-arg VERSION=$(VERSION),)
