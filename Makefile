@@ -34,9 +34,9 @@ YAJL_VERSION ?= 2.1.0
 YAJL_SHA ?= a0ecdde0c042b9256170f2f8890dd9451a4240aa
 
 # renovate: datasource=github-tags depName=GNOME/libxml2 versioning=semver
-LIBXML2_VERSION ?= v2.15.3
+LIBXML2_VERSION ?= v2.15.4
 # renovate: datasource=github-tags depName=GNOME/libxml2 versioning=semver digest
-LIBXML2_SHA ?= c94eb0210183b9d7cb43f8e7fddc6be55843ef49
+LIBXML2_SHA ?= 96498992efa48d52b0e8b83058bd88dbdaf153c1
 
 # renovate: datasource=github-tags depName=coreruleset/coreruleset versioning=semver
 CRS_VERSION ?= v4.28.0
