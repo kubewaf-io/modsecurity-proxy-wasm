@@ -42,7 +42,7 @@ LIBXML2_SHA ?= c94eb0210183b9d7cb43f8e7fddc6be55843ef49
 CRS_VERSION ?= v4.28.0
 
 # renovate: datasource=docker depName=ghcr.io/coreruleset/go-ftw
-GO_FTW_VERSION ?= 2.5.0
+GO_FTW_VERSION ?= 2.6.0
 
 # renovate: datasource=docker depName=envoyproxy/envoy versioning=loose
 ENVOY_IMAGE ?= envoyproxy/envoy:v1.39.0
