@@ -2,7 +2,7 @@
 version: "3.8"
 services:
   envoy:
-    image: ${ENVOY_IMAGE:-envoyproxy/envoy:v1.39-latest@sha256:d59f7f5fa10cff6d5892b6c5e7df5c9297ddfb2c3683e33fbfb82da24de4fa66}
+    image: ${ENVOY_IMAGE:-envoyproxy/envoy:v1.40-latest@sha256:713bb146f1a7c97ebc70e13d259f77ff36f2c5d00f3145677816af5af9bd1530}
     command: ["envoy", "-c", "/etc/envoy.yaml", "--log-level", "warn"]
     ports:
       - "18080:8080"
