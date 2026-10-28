@@ -11,7 +11,7 @@
 # Package an existing modsecurity-proxy-wasm.wasm (no compile):
 #   podman build -f build/docker/Dockerfile.oci -t modsecurity-proxy-wasm:latest .
 
-FROM debian:trixie-slim@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd AS builder
+FROM debian:trixie-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
